@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - testcase-network
+
+  backend:
+    image: testcase-generator-backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://testcase:testcase@postgres:5432/testcase
+      - SECRET_KEY=your-secret-key-change-in-production
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+    depends_on:
+      - postgres
+    networks:
+      - testcase-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=testcase
+      - POSTGRES_USER=testcase
+      - POSTGRES_PASSWORD=testcase
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - testcase-network
+
+networks:
+  testcase-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

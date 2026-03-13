@@ -70,11 +70,11 @@ export const systemApi = {
 export const moduleApi = {
   // 获取模块列表
   getModules: (systemId: number) =>
-    api.get(`/systems/${systemId}/modules`),
+    api.get(`/modules/system/${systemId}`),
   
   // 创建模块
   createModule: (systemId: number, data: { name: string; parent_id?: number; description?: string }) =>
-    api.post(`/systems/${systemId}/modules`, data),
+    api.post(`/modules/system/${systemId}`, data),
   
   // 更新模块
   updateModule: (id: number, data: { name?: string; parent_id?: number; description?: string }) =>

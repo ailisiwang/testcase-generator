@@ -25,6 +25,45 @@ security = HTTPBearer()
 
 
 @router.get("", response_model=PaginatedTestCases)
+def get_cases(
+    system_id: Optional[int] = None,
+    module_id: Optional[int] = None,
+    status: Optional[str] = None,
+    keyword: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dep)
+):
+    """Get test cases with pagination"""
+    query = db.query(TestCase).join(TestSystem).filter(
+        TestSystem.user_id == current_user.id
+    )
+    
+    if system_id:
+        query = query.filter(TestCase.system_id == system_id)
+    if module_id:
+        query = query.filter(TestCase.module_id == module_id)
+    if status:
+        query = query.filter(TestCase.status == status)
+    if keyword:
+        query = query.filter(TestCase.title.contains(keyword))
+    
+    total = query.count()
+    pages = math.ceil(total / page_size)
+    
+    cases = query.order_by(desc(TestCase.created_at)).offset(
+        (page - 1) * page_size
+    ).limit(page_size).all()
+    
+    return {
+        "items": cases,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": pages
+    }
+
 
 # Export route
 @router.get("/export")

@@ -52,7 +52,7 @@ const Modules: React.FC = () => {
       
       // 获取模块列表
       const modulesRes = await moduleApi.getModules(Number(systemId))
-      const treeData = buildTree(modulesRes.data.items || [])
+      const treeData = buildTree(modulesRes.data || [])
       setModules(treeData)
     } catch (error) {
       message.error('获取数据失败')

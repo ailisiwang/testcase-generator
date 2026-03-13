@@ -367,7 +367,7 @@ const ModelConfigPage: React.FC = () => {
             label="Max Tokens"
             initialValue={2048}
           >
-            <InputNumber min={100} max={32000} step={100} style={{ width: '100%' }} />
+            <InputNumber min={100} max={200000} step={100} style={{ width: '100%' }} />
           </Form.Item>
 
           {editingModel && (

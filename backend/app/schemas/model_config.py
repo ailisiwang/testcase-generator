@@ -1,7 +1,7 @@
 """Model config schemas"""
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ModelConfigBase(BaseModel):
@@ -12,7 +12,7 @@ class ModelConfigBase(BaseModel):
     endpoint_url: Optional[str] = None  # 旧字段，保留兼容
     api_base_url: Optional[str] = None  # API 基础 URL
     temperature: float = 0.7
-    max_tokens: int = 2048
+    max_tokens: int = Field(default=2048, le=200000, ge=1)
     is_default: Optional[bool] = None  # 是否为默认配置
 
 

@@ -13,6 +13,11 @@ from app.models.model_config import ModelConfig
 from app.models.user import User
 from app.routers.users import get_current_user_dep
 from app.utils.security import encrypt_api_key, decrypt_api_key
+from app.llm.providers.glm import GLMProvider
+from app.llm.providers.gpt import GPTProvider
+from app.llm.providers.qwen import QwenProvider
+from app.llm.providers.doubao import DoubaoProvider
+from app.llm.providers.claude import ClaudeProvider
 
 router = APIRouter(prefix="/api/models", tags=["模型配置"])
 security = HTTPBearer()
@@ -170,3 +175,53 @@ def delete_model_config(
     db.commit()
     
     return None
+
+
+@router.post("/{config_id}/test")
+def test_model_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dep)
+):
+    """Test model configuration connection"""
+    config = db.query(ModelConfig).filter(
+        ModelConfig.id == config_id,
+        ModelConfig.user_id == current_user.id
+    ).first()
+    
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
+    
+    # Decrypt API key
+    api_key = decrypt_api_key(config.api_key_encrypted) if config.api_key_encrypted else None
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key 未配置")
+    
+    # Get provider
+    provider_map = {
+        "glm": GLMProvider,
+        "gpt": GPTProvider,
+        "qwen": QwenProvider,
+        "doubao": DoubaoProvider,
+        "claude": ClaudeProvider,
+    }
+    
+    ProviderClass = provider_map.get(config.provider)
+    if not ProviderClass:
+        raise HTTPException(status_code=400, detail=f"不支持的供应商: {config.provider}")
+    
+    try:
+        provider = ProviderClass(
+            api_key=api_key,
+            base_url=config.api_base_url,
+            model=config.model_name,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens
+        )
+        # Simple test - just try to invoke the model with a simple prompt
+        test_result = provider.generate("Say 'OK' in one word.")
+        if test_result and len(test_result) > 0:
+            return {"success": True, "message": "连接测试成功", "result": test_result[:100]}
+        raise Exception("模型返回为空")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"测试失败: {str(e)}")

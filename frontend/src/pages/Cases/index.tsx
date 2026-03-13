@@ -83,7 +83,7 @@ const Cases: React.FC = () => {
   const fetchSystems = async () => {
     try {
       const res = await systemApi.getSystems({ page_size: 100 })
-      setSystems(res.data.items || [])
+      setSystems(res.data || [])
     } catch (error) {
       console.error(error)
     }
@@ -92,7 +92,7 @@ const Cases: React.FC = () => {
   const fetchModules = async (systemId: number) => {
     try {
       const res = await moduleApi.getModules(systemId)
-      setModules(res.data.items || [])
+      setModules(res.data || [])
     } catch (error) {
       console.error(error)
     }
@@ -109,7 +109,7 @@ const Cases: React.FC = () => {
         status: filters.status,
         keyword: filters.keyword,
       })
-      setCases(res.data.items || [])
+      setCases(res.data || [])
       setPagination({ ...pagination, total: res.data.total || 0 })
     } catch (error) {
       message.error('获取用例列表失败')

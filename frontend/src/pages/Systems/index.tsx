@@ -40,7 +40,7 @@ const Systems: React.FC = () => {
   const fetchSystems = async () => {
     try {
       const res = await systemApi.getSystems({ page_size: 100 })
-      setSystems(res.data.items || [])
+      setSystems(res.data || [])
     } catch (error) {
       message.error('获取系统列表失败')
     } finally {

@@ -85,9 +85,9 @@ const CaseGenerate: React.FC = () => {
   const fetchSystems = async () => {
     try {
       const res = await systemApi.getSystems({ page_size: 100 })
-      setSystems(res.data.items || [])
-      if (!selectedSystem && res.data.items?.length > 0) {
-        setSelectedSystem(res.data.items[0].id)
+      setSystems(res.data || [])
+      if (!selectedSystem && res.data?.length > 0) {
+        setSelectedSystem(res.data[0].id)
       }
     } catch (error) {
       message.error('获取系统列表失败')
@@ -97,7 +97,7 @@ const CaseGenerate: React.FC = () => {
   const fetchModules = async (systemId: number) => {
     try {
       const res = await moduleApi.getModules(systemId)
-      const flatModules = flattenModules(res.data.items || [])
+      const flatModules = flattenModules(res.data || [])
       setModules(flatModules)
     } catch (error) {
       // 静默处理错误
@@ -122,9 +122,9 @@ const CaseGenerate: React.FC = () => {
   const fetchModels = async () => {
     try {
       const res = await modelApi.getModels({ page_size: 100 })
-      setModels(res.data.items || [])
-      if (res.data.items?.length > 0) {
-        const activeModel = res.data.items.find((m: ModelConfig) => m.is_active)
+      setModels(res.data || [])
+      if (res.data?.length > 0) {
+        const activeModel = res.data.find((m: ModelConfig) => m.is_active)
         if (activeModel) {
           setSelectedModel(activeModel.id)
         }

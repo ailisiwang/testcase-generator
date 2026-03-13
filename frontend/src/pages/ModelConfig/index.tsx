@@ -62,7 +62,7 @@ const ModelConfigPage: React.FC = () => {
   const fetchModels = async () => {
     try {
       const res = await modelApi.getModels({ page_size: 100 })
-      setModels(res.data.items || [])
+      setModels(res.data || [])
     } catch (error) {
       message.error('获取模型配置失败')
     } finally {

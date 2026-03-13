@@ -49,11 +49,14 @@ def get_llm_provider(provider: str, api_key: str, model_name: str,
         "qwen": QwenProvider,
         "gpt": GPTProvider,
         "claude": ClaudeProvider,
+        "custom": GLMProvider,  # custom 也使用 GLM
     }
     
-    provider_class = providers.get(provider.lower())
+    provider_lower = provider.lower()
+    provider_class = providers.get(provider_lower)
     if not provider_class:
-        raise ValueError(f"Unknown provider: {provider}")
+        # 未知供应商，默认使用 GLM
+        provider_class = GLMProvider
     
     return provider_class(api_key=api_key, model_name=model_name, 
                          api_base_url=api_base_url, **kwargs)

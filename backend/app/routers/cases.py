@@ -217,6 +217,10 @@ def get_case_versions(
 
 
 # Generation routes
+@router.get("/export_cases")
+
+
+# Export route
 @router.post("/generate")
 async def generate_cases(
     request: CaseGenerateRequest,
@@ -251,8 +255,6 @@ async def generate_cases(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-# Export route
-@router.get("/export")
 async def export_cases(
     system_id: Optional[int] = None,
     module_id: Optional[int] = None,
@@ -299,3 +301,6 @@ async def export_cases(
             "Content-Disposition": "attachment; filename=test_cases.xlsx"
         }
     )
+
+
+

@@ -109,7 +109,7 @@ const Cases: React.FC = () => {
         status: filters.status,
         keyword: filters.keyword,
       })
-      setCases(res.data || [])
+      setCases(res.data.items || [])
       setPagination({ ...pagination, total: res.data.total || 0 })
     } catch (error) {
       message.error('获取用例列表失败')

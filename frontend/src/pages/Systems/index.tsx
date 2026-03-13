@@ -1,39 +1,29 @@
 import React, { useEffect, useState } from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Space, 
-  Tag, 
-  Modal, 
-  Form, 
-  Input, 
-  message, 
+import {
+  Card,
+  Table,
+  Button,
+  Space,
+  Modal,
+  Form,
+  Input,
+  message,
   Popconfirm,
-  Typography,
-  Row,
-  Col 
+  Typography
 } from 'antd'
-import { 
-  PlusOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
   FolderOutlined,
-  SettingOutlined 
+  SettingOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { systemApi } from '../../api/services'
+import type { System } from '../../types'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 const { TextArea } = Input
-
-interface System {
-  id: number
-  name: string
-  description?: string
-  created_at: string
-  updated_at: string
-}
 
 const Systems: React.FC = () => {
   const navigate = useNavigate()
@@ -127,7 +117,7 @@ const Systems: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: System) => (
+      render: (_: unknown, record: System) => (
         <Space>
           <Button
             type="link"

@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react'
-import { 
-  Card, 
-  Row, 
-  Col, 
-  Select, 
-  Button, 
-  Space, 
-  Input, 
-  Upload, 
-  message, 
+import React, { useEffect, useState, useRef, useCallback } from 'react'
+import {
+  Card,
+  Row,
+  Col,
+  Select,
+  Button,
+  Space,
+  Input,
+  Upload,
+  message,
   Typography,
   Divider,
   Spin,
@@ -16,11 +16,10 @@ import {
   Alert,
   Tag
 } from 'antd'
-import { 
-  SendOutlined, 
-  UploadOutlined, 
+import {
+  SendOutlined,
+  UploadOutlined,
   FileTextOutlined,
-  DeleteOutlined,
   SaveOutlined,
   CopyOutlined,
   ClearOutlined
@@ -28,31 +27,25 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { systemApi, moduleApi, modelApi, generateApi, caseApi } from '../../api/services'
+import type { System, Module, ModelConfig, CaseData } from '../../types'
 
-const { Title, Text, Paragraph } = Typography
+const { Title, Text } = Typography
 const { TextArea } = Input
 
-interface System {
-  id: number
+interface UploadFile {
+  uid: string
   name: string
-}
-
-interface Module {
-  id: number
-  name: string
-}
-
-interface ModelConfig {
-  id: number
-  provider: string
-  model_name: string
-  is_active: boolean
+  status?: string
+  originFileObj?: File
 }
 
 const CaseGenerate: React.FC = () => {
   const { systemId } = useParams<{ systemId: string }>()
   const navigate = useNavigate()
-  
+
+  // 使用 ref 存储 EventSource 实例，方便清理
+  const eventSourceRef = useRef<EventSource | null>(null)
+
   const [systems, setSystems] = useState<System[]>([])
   const [modules, setModules] = useState<Module[]>([])
   const [models, setModels] = useState<ModelConfig[]>([])
@@ -63,10 +56,20 @@ const CaseGenerate: React.FC = () => {
   const [generatedContent, setGeneratedContent] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState('text')
-  const [fileList, setFileList] = useState<any[]>([])
-  const [generatedCases, setGeneratedCases] = useState<any[]>([])
-  
+  const [fileList, setFileList] = useState<UploadFile[]>([])
+  const [generatedCases, setGeneratedCases] = useState<CaseData[]>([])
+
   const outputRef = useRef<HTMLDivElement>(null)
+
+  // 组件卸载时清理 EventSource
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     fetchSystems()
@@ -97,19 +100,20 @@ const CaseGenerate: React.FC = () => {
       const flatModules = flattenModules(res.data.items || [])
       setModules(flatModules)
     } catch (error) {
-      console.error(error)
+      // 静默处理错误
     }
   }
 
-  const flattenModules = (items: any[], prefix = ''): Module[] => {
-    let result: Module[] = []
+  const flattenModules = (items: Module[], prefix = ''): Module[] => {
+    const result: Module[] = []
     items.forEach(item => {
       result.push({
         id: item.id,
         name: prefix + item.name,
+        parent_id: item.parent_id,
       })
       if (item.children) {
-        result = result.concat(flattenModules(item.children, prefix + '  '))
+        result.push(...flattenModules(item.children, prefix + '  '))
       }
     })
     return result
@@ -126,9 +130,17 @@ const CaseGenerate: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error(error)
+      // 静默处理错误
     }
   }
+
+  // 清理 EventSource 的辅助函数
+  const cleanupEventSource = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+  }, [])
 
   // 文本生成
   const handleGenerate = async () => {
@@ -140,6 +152,9 @@ const CaseGenerate: React.FC = () => {
       message.warning('请输入需求描述')
       return
     }
+
+    // 先清理之前的连接
+    cleanupEventSource()
 
     setIsGenerating(true)
     setGeneratedContent('')
@@ -154,42 +169,49 @@ const CaseGenerate: React.FC = () => {
       })
 
       const taskId = res.data.task_id
-      
+
       // 使用 SSE 流式读取
       const eventSource = new EventSource(`/api/cases/generate/stream/${taskId}`)
-      
+      eventSourceRef.current = eventSource
+
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
           if (data.content) {
             setGeneratedContent(prev => prev + data.content)
+            // 自动滚动到底部
+            if (outputRef.current) {
+              outputRef.current.scrollTop = outputRef.current.scrollHeight
+            }
           }
           if (data.done) {
-            eventSource.close()
+            cleanupEventSource()
             setIsGenerating(false)
-            
+
             // 尝试解析生成的用例
             try {
-              const parsed = parseGeneratedContent(data.full_content || generatedContent)
+              const fullContent = data.full_content || generatedContent
+              const parsed = parseGeneratedContent(fullContent)
               setGeneratedCases(parsed)
             } catch (e) {
-              console.error('解析用例失败', e)
+              // 解析失败不影响用户查看原始内容
             }
           }
         } catch (e) {
-          console.error('解析流式数据失败', e)
+          // JSON解析失败，跳过该消息
         }
       }
 
       eventSource.onerror = () => {
-        eventSource.close()
+        cleanupEventSource()
         setIsGenerating(false)
         message.error('生成中断')
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       setIsGenerating(false)
-      message.error(error.response?.data?.detail || '生成失败')
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || '生成失败')
     }
   }
 
@@ -204,6 +226,9 @@ const CaseGenerate: React.FC = () => {
       return
     }
 
+    // 先清理之前的连接
+    cleanupEventSource()
+
     setIsGenerating(true)
     setGeneratedContent('')
 
@@ -216,46 +241,57 @@ const CaseGenerate: React.FC = () => {
       if (selectedModel) {
         formData.append('model_config_id', String(selectedModel))
       }
-      formData.append('file', fileList[0].originFileObj)
+      formData.append('file', fileList[0].originFileObj!)
 
       const res = await generateApi.generateFromFile(formData)
-      
+
       // 文件上传后可能返回完整内容或 task_id
       if (res.data.task_id) {
         const taskId = res.data.task_id
         const eventSource = new EventSource(`/api/cases/generate/stream/${taskId}`)
-        
+        eventSourceRef.current = eventSource
+
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
             if (data.content) {
               setGeneratedContent(prev => prev + data.content)
+              if (outputRef.current) {
+                outputRef.current.scrollTop = outputRef.current.scrollHeight
+              }
             }
             if (data.done) {
-              eventSource.close()
+              cleanupEventSource()
               setIsGenerating(false)
             }
           } catch (e) {
-            console.error(e)
+            // JSON解析失败，跳过该消息
           }
+        }
+
+        eventSource.onerror = () => {
+          cleanupEventSource()
+          setIsGenerating(false)
+          message.error('文件处理中断')
         }
       } else if (res.data.content) {
         setGeneratedContent(res.data.content)
         setIsGenerating(false)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setIsGenerating(false)
-      message.error(error.response?.data?.detail || '文件处理失败')
+      const err = error as { response?: { data?: { detail?: string } } }
+      message.error(err.response?.data?.detail || '文件处理失败')
     }
   }
 
   // 解析生成的内容为用例
-  const parseGeneratedContent = (content: string): any[] => {
+  const parseGeneratedContent = (content: string): CaseData[] => {
     try {
       // 尝试找到 JSON 数组
       const jsonMatch = content.match(/\[[\s\S]*\]/g)
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0])
+        return JSON.parse(jsonMatch[0]) as CaseData[]
       }
       return []
     } catch {
@@ -299,7 +335,7 @@ const CaseGenerate: React.FC = () => {
         })
         message.success('用例保存成功')
       }
-      
+
       navigate('/cases')
     } catch (error) {
       message.error('保存失败')
@@ -314,6 +350,8 @@ const CaseGenerate: React.FC = () => {
   }
 
   const handleClear = () => {
+    // 清理可能存在的连接
+    cleanupEventSource()
     setGeneratedContent('')
     setGeneratedCases([])
     setRequirement('')
@@ -361,15 +399,15 @@ const CaseGenerate: React.FC = () => {
                   allowClear
                   value={selectedModel}
                   onChange={setSelectedModel}
-                  options={models.map(m => ({ 
-                    label: `${m.provider}/${m.model_name}`, 
-                    value: m.id 
+                  options={models.map(m => ({
+                    label: `${m.provider}/${m.model_name}`,
+                    value: m.id
                   }))}
                 />
                 {models.length === 0 && (
-                  <Alert 
-                    message="未配置模型，请先到模型配置页面添加" 
-                    type="warning" 
+                  <Alert
+                    message="未配置模型，请先到模型配置页面添加"
+                    type="warning"
                     style={{ marginTop: 8 }}
                     showIcon
                   />
@@ -378,8 +416,8 @@ const CaseGenerate: React.FC = () => {
 
               <Divider />
 
-              <Tabs 
-                activeKey={activeTab} 
+              <Tabs
+                activeKey={activeTab}
                 onChange={setActiveTab}
                 items={[
                   {
@@ -415,8 +453,8 @@ const CaseGenerate: React.FC = () => {
                       <div>
                         <Upload
                           accept=".txt,.doc,.docx,.pdf,.md"
-                          fileList={fileList}
-                          onChange={({ fileList }) => setFileList(fileList)}
+                          fileList={fileList as any}
+                          onChange={({ fileList }) => setFileList(fileList as UploadFile[])}
                           beforeUpload={() => false}
                           maxCount={1}
                         >
@@ -446,7 +484,7 @@ const CaseGenerate: React.FC = () => {
         </Col>
 
         <Col xs={24} lg={14}>
-          <Card 
+          <Card
             title={
               <Space>
                 <FileTextOutlined />
@@ -458,25 +496,25 @@ const CaseGenerate: React.FC = () => {
             }
             extra={
               <Space>
-                <Button 
-                  icon={<CopyOutlined />} 
+                <Button
+                  icon={<CopyOutlined />}
                   onClick={handleCopy}
                   disabled={!generatedContent}
                   size="small"
                 >
                   复制
                 </Button>
-                <Button 
-                  icon={<ClearOutlined />} 
+                <Button
+                  icon={<ClearOutlined />}
                   onClick={handleClear}
                   disabled={!generatedContent && generatedCases.length === 0}
                   size="small"
                 >
                   清空
                 </Button>
-                <Button 
+                <Button
                   type="primary"
-                  icon={<SaveOutlined />} 
+                  icon={<SaveOutlined />}
                   onClick={handleSaveCases}
                   disabled={(!generatedContent && generatedCases.length === 0) || !selectedSystem}
                 >
@@ -503,10 +541,14 @@ const CaseGenerate: React.FC = () => {
             )}
 
             {generatedContent && (
-              <div 
+              <div
                 ref={outputRef}
                 className="stream-output"
-                style={{ whiteSpace: 'pre-wrap' }}
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: 500,
+                  overflowY: 'auto',
+                }}
               >
                 <ReactMarkdown>{generatedContent}</ReactMarkdown>
               </div>

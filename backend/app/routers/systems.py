@@ -42,7 +42,8 @@ def create_system(
     system = TestSystem(
         name=system_data.name,
         description=system_data.description,
-        user_id=current_user.id
+        user_id=current_user.id,
+        creator_id=current_user.id
     )
     
     db.add(system)

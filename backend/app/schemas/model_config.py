@@ -5,12 +5,15 @@ from pydantic import BaseModel
 
 
 class ModelConfigBase(BaseModel):
+    name: str  # 配置名称
     provider: str  # glm, doubao, qwen, gpt, claude
     model_name: str
-    api_key: Optional[str] = None
-    api_base_url: Optional[str] = None
+    api_key: Optional[str] = None  # API 密钥（加密存储）
+    endpoint_url: Optional[str] = None  # 旧字段，保留兼容
+    api_base_url: Optional[str] = None  # API 基础 URL
     temperature: float = 0.7
     max_tokens: int = 2048
+    is_default: Optional[bool] = None  # 是否为默认配置
 
 
 class ModelConfigCreate(ModelConfigBase):
@@ -18,11 +21,15 @@ class ModelConfigCreate(ModelConfigBase):
 
 
 class ModelConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    provider: Optional[str] = None
     model_name: Optional[str] = None
     api_key: Optional[str] = None
+    endpoint_url: Optional[str] = None
     api_base_url: Optional[str] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+    is_default: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -30,8 +37,9 @@ class ModelConfigResponse(ModelConfigBase):
     id: int
     user_id: int
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    is_default: Optional[bool] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

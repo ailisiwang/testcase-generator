@@ -1,38 +1,31 @@
 import React, { useEffect, useState } from 'react'
-import { 
-  Card, 
-  Tree, 
-  Button, 
-  Space, 
-  Modal, 
-  Form, 
-  Input, 
-  message, 
+import {
+  Card,
+  Tree,
+  Button,
+  Space,
+  Modal,
+  Form,
+  Input,
+  message,
   Popconfirm,
   Typography,
   Breadcrumb,
-  Spin 
+  Spin
 } from 'antd'
-import { 
-  PlusOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
   FolderOutlined,
   FolderOpenOutlined,
-  HomeOutlined 
+  HomeOutlined
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { systemApi, moduleApi } from '../../api/services'
+import type { Module } from '../../types'
 
 const { Title } = Typography
-
-interface Module {
-  id: number
-  name: string
-  parent_id: number | null
-  description?: string
-  children?: Module[]
-}
 
 const Modules: React.FC = () => {
   const { systemId } = useParams<{ systemId: string }>()
@@ -183,7 +176,7 @@ const Modules: React.FC = () => {
           模块管理 - {systemName}
         </Title>
         <Space>
-          <Button icon={<HomeOutlined />} onClick={() => handleCreate(null)}>
+          <Button icon={<HomeOutlined />} onClick={() => handleCreate(undefined)}>
             新建根模块
           </Button>
         </Space>

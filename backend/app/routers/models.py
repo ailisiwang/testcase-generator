@@ -49,8 +49,9 @@ def create_model_config(
     current_user: User = Depends(get_current_user_dep)
 ):
     """Create a new model configuration"""
-    # Validate provider
+    # Validate provider - allow custom and predefined
     provider_ids = [p.id for p in AVAILABLE_PROVIDERS]
+    provider_ids.append("custom")  # Allow custom provider
     if config_data.provider not in provider_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -64,6 +65,8 @@ def create_model_config(
     
     config = ModelConfig(
         user_id=current_user.id,
+        created_by=current_user.id,
+        name=config_data.name,
         provider=config_data.provider,
         model_name=config_data.model_name,
         api_key_encrypted=api_key_encrypted,

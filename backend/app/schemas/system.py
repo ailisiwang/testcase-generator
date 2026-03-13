@@ -22,8 +22,8 @@ class SystemUpdate(BaseModel):
 class SystemResponse(SystemBase):
     id: int
     user_id: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -49,8 +49,8 @@ class ModuleResponse(ModuleBase):
     id: int
     system_id: int
     parent_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

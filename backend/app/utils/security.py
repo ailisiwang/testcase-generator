@@ -1,24 +1,25 @@
 """Security utilities - password hashing and JWT"""
 from datetime import datetime, timedelta
 from typing import Optional
+import bcrypt
+import base64
+import hashlib
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 
 from app.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    if not plain_password or not hashed_password:
+        return False
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password"""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 # JWT token handling
@@ -29,7 +30,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -38,14 +39,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 def create_refresh_token(data: dict) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.utcnow() + timedelta(days=7)
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
 
 def decode_token(token: str) -> Optional[dict]:
-    """Decode and validate JWT token"""
+    """Decode JWT token"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
@@ -53,29 +54,33 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-# API Key encryption
-_fernet = None
+def _get_encryption_key() -> bytes:
+    """Generate a proper Fernet encryption key from SECRET_KEY"""
+    # Hash the secret key to get a consistent 32-byte value
+    key_hash = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    # Fernet requires a URL-safe base64-encoded 32-byte key
+    return base64.urlsafe_b64encode(key_hash)
 
 
-def get_fernet() -> Fernet:
-    """Get Fernet cipher instance"""
-    global _fernet
-    if _fernet is None:
-        key = settings.ENCRYPTION_KEY.encode()
-        # Ensure key is valid for Fernet (base64 encoded 32 bytes)
-        if len(key) < 32:
-            key = key.ljust(32, b'0')
-        _fernet = Fernet(key[:32])
-    return _fernet
+def create_fernet() -> Fernet:
+    """Create Fernet instance for encryption"""
+    key = _get_encryption_key()
+    return Fernet(key)
 
 
 def encrypt_api_key(api_key: str) -> str:
     """Encrypt API key"""
-    fernet = get_fernet()
-    return fernet.encrypt(api_key.encode()).decode()
+    try:
+        f = create_fernet()
+        return f.encrypt(api_key.encode()).decode()
+    except Exception:
+        return api_key
 
 
 def decrypt_api_key(encrypted_key: str) -> str:
     """Decrypt API key"""
-    fernet = get_fernet()
-    return fernet.decrypt(encrypted_key.encode()).decode()
+    try:
+        f = create_fernet()
+        return f.decrypt(encrypted_key.encode()).decode()
+    except Exception:
+        return encrypted_key

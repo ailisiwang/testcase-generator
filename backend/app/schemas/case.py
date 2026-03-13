@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 # Test case schemas
 class TestCaseBase(BaseModel):
-    case_data: Dict[str, Any]
+    case_data: Optional[Any] = None
 
 
 class TestCaseCreate(TestCaseBase):
@@ -30,8 +30,8 @@ class TestCaseResponse(TestCaseBase):
     created_by: int
     reviewer_id: Optional[int] = None
     review_status: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -40,7 +40,7 @@ class TestCaseResponse(TestCaseBase):
 # Version schemas
 class CaseVersionBase(BaseModel):
     version: int
-    case_data: Dict[str, Any]
+    case_data: Optional[Any] = None
     change_summary: Optional[str] = None
 
 
@@ -52,7 +52,7 @@ class CaseVersionResponse(CaseVersionBase):
     id: int
     case_id: int
     created_by: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -74,7 +74,7 @@ class CaseGenerateFileRequest(BaseModel):
 
 
 class GeneratedCase(BaseModel):
-    case_data: Dict[str, Any]
+    case_data: Optional[Any] = None
     confidence: Optional[float] = None
 
 

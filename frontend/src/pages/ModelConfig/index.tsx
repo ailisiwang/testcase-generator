@@ -1,46 +1,32 @@
 import React, { useEffect, useState } from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Space, 
-  Tag, 
-  Modal, 
-  Form, 
-  Input, 
-  InputNumber, 
-  Select, 
-  message, 
+import {
+  Card,
+  Table,
+  Button,
+  Space,
+  Tag,
+  Modal,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  message,
   Popconfirm,
   Typography,
   Switch,
   Divider,
   Alert
 } from 'antd'
-import { 
-  PlusOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  SettingOutlined,
-  CheckCircleOutlined,
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
   SyncOutlined
 } from '@ant-design/icons'
 import { modelApi } from '../../api/services'
+import type { ModelConfig } from '../../types'
 
 const { Title, Text } = Typography
-
-interface ModelConfig {
-  id: number
-  provider: string
-  model_name: string
-  api_base_url?: string
-  temperature: number
-  max_tokens: number
-  is_active: boolean
-  is_default: boolean
-  created_at: string
-  updated_at: string
-}
 
 const MODEL_PROVIDERS = [
   { value: 'zhipu', label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
@@ -89,6 +75,7 @@ const ModelConfigPage: React.FC = () => {
     setSelectedProvider('zhipu')
     form.resetFields()
     form.setFieldsValue({
+      name: '',
       provider: 'zhipu',
       model_name: 'glm-4',
       temperature: 0.7,
@@ -101,6 +88,7 @@ const ModelConfigPage: React.FC = () => {
     setEditingModel(record)
     setSelectedProvider(record.provider)
     form.setFieldsValue({
+      name: record.name,
       provider: record.provider,
       model_name: record.model_name,
       api_key: '••••••••', // 不显示真实 key
@@ -123,6 +111,7 @@ const ModelConfigPage: React.FC = () => {
   }
 
   const handleSubmit = async (values: { 
+    name: string;
     provider: string;
     model_name: string;
     api_key?: string;
@@ -133,6 +122,7 @@ const ModelConfigPage: React.FC = () => {
   }) => {
     try {
       const data = {
+        name: values.name,
         provider: values.provider,
         model_name: values.model_name,
         api_key: values.api_key === '••••••••' ? undefined : values.api_key,
@@ -184,6 +174,12 @@ const ModelConfigPage: React.FC = () => {
 
   const columns = [
     {
+      title: '配置名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string) => <Tag color="blue">{name}</Tag>,
+    },
+    {
       title: '提供商',
       dataIndex: 'provider',
       key: 'provider',
@@ -210,7 +206,7 @@ const ModelConfigPage: React.FC = () => {
     {
       title: '参数',
       key: 'params',
-      render: (_: any, record: ModelConfig) => (
+      render: (_: unknown, record: ModelConfig) => (
         <Space>
           <Tag>温度: {record.temperature}</Tag>
           <Tag>Max: {record.max_tokens}</Tag>
@@ -233,7 +229,7 @@ const ModelConfigPage: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: ModelConfig) => (
+      render: (_: unknown, record: ModelConfig) => (
         <Space>
           <Button
             type="link"
@@ -304,6 +300,14 @@ const ModelConfigPage: React.FC = () => {
           layout="vertical"
           onFinish={handleSubmit}
         >
+          <Form.Item
+            name="name"
+            label="配置名称"
+            rules={[{ required: true, message: '请输入配置名称' }]}
+          >
+            <Input placeholder="如：智谱GLM-4.7" />
+          </Form.Item>
+
           <Form.Item
             name="provider"
             label="模型提供商"

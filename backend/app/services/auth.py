@@ -1,4 +1,5 @@
 """Auth service"""
+from datetime import datetime
 from datetime import timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -31,6 +32,8 @@ class AuthService:
         
         # Create user
         user = User(
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
             username=user_data.username,
             email=user_data.email,
             password_hash=get_password_hash(user_data.password),

@@ -1,18 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { 
-  Card, 
-  Table, 
-  Button, 
-  Space, 
-  Tag, 
-  Modal, 
-  Form, 
-  Input, 
-  Select, 
-  message, 
-  Popconfirm,
+import {
+  Card,
+  Table,
+  Button,
+  Space,
+  Tag,
+  Modal,
+  Form,
+  Input,
+  Select,
+  message,
   Typography,
-  InputNumber,
   Drawer,
   Descriptions,
   Divider,
@@ -20,48 +18,34 @@ import {
   Row,
   Col
 } from 'antd'
-import { 
-  PlusOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
   EyeOutlined,
   HistoryOutlined,
   DownloadOutlined,
   MoreOutlined,
-  SwapOutlined,
   FilterOutlined
 } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { caseApi, systemApi, moduleApi } from '../../api/services'
+import type { TestCase, System, Module, CaseData } from '../../types'
 import dayjs from 'dayjs'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
 
-interface TestCase {
+interface VersionData {
   id: number
-  system_id: number
-  module_id?: number
-  case_data: any
   version: number
-  status: string
-  review_status: string
+  case_data: CaseData
   created_at: string
-  updated_at: string
-}
-
-interface System {
-  id: number
-  name: string
-}
-
-interface Module {
-  id: number
-  name: string
+  change_summary?: string
 }
 
 const Cases: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const [cases, setCases] = useState<TestCase[]>([])
   const [systems, setSystems] = useState<System[]>([])
   const [modules, setModules] = useState<Module[]>([])
@@ -79,8 +63,6 @@ const Cases: React.FC = () => {
   const [selectedCase, setSelectedCase] = useState<TestCase | null>(null)
   const [versionDrawer, setVersionDrawer] = useState(false)
   const [versions, setVersions] = useState<any[]>([])
-  const [compareDrawer, setCompareDrawer] = useState(false)
-  const [compareData, setCompareData] = useState<{ v1: any; v2: any } | null>(null)
   const [filterVisible, setFilterVisible] = useState(false)
   const [form] = Form.useForm()
 
@@ -218,17 +200,6 @@ const Cases: React.FC = () => {
     }
   }
 
-  const handleCompare = async (v1: number, v2: number) => {
-    if (!selectedCase) return
-    try {
-      const res = await caseApi.compareVersions(selectedCase.id, v1, v2)
-      setCompareData(res.data)
-      setCompareDrawer(true)
-    } catch (error) {
-      message.error('版本对比失败')
-    }
-  }
-
   const handleExport = async () => {
     try {
       const res = await caseApi.exportCases({
@@ -256,7 +227,7 @@ const Cases: React.FC = () => {
       key: 'title',
       width: 250,
       ellipsis: true,
-      render: (_: any, record: TestCase) => record.case_data?.title || '-',
+      render: (_: unknown, record: TestCase) => record.case_data?.title || '-',
     },
     {
       title: '所属系统',
@@ -321,7 +292,7 @@ const Cases: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 180,
-      render: (_: any, record: TestCase) => (
+      render: (_: unknown, record: TestCase) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>
             查看
@@ -508,7 +479,7 @@ const Cases: React.FC = () => {
         open={versionDrawer}
         onClose={() => setVersionDrawer(false)}
       >
-        {versions.map((v) => (
+        {versions.map((v: VersionData) => (
           <Card key={v.id} size="small" style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <Text strong>v{v.version}</Text>
@@ -518,27 +489,6 @@ const Cases: React.FC = () => {
             <Text>{v.change_summary || '无变更说明'}</Text>
           </Card>
         ))}
-      </Drawer>
-
-      {/* 版本对比抽屉 */}
-      <Drawer
-        title="版本对比"
-        width={800}
-        open={compareDrawer}
-        onClose={() => setCompareDrawer(false)}
-      >
-        {compareData && (
-          <div className="version-compare">
-            <div className="version-panel">
-              <h4>v{compareData.v1?.version}</h4>
-              <pre style={{ fontSize: 12 }}>{JSON.stringify(compareData.v1?.case_data, null, 2)}</pre>
-            </div>
-            <div className="version-panel">
-              <h4>v{compareData.v2?.version}</h4>
-              <pre style={{ fontSize: 12 }}>{JSON.stringify(compareData.v2?.case_data, null, 2)}</pre>
-            </div>
-          </div>
-        )}
       </Drawer>
     </div>
   )

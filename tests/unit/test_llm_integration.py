@@ -1,313 +1,358 @@
-"""
-大模型集成测试模块
-
-包含：
-- 多模型切换测试
-- 参数配置测试
-- API Key 加密存储测试
-"""
+"""测试大模型集成 - Provider初始化和功能验证"""
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import datetime
-import base64
-from cryptography.fernet import Fernet
+from unittest.mock import Mock, patch, AsyncMock, MagicMock
+import sys
+import os
+
+# Add backend to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../backend'))
+
+from app.llm.providers.glm import GLMProvider
+from app.llm.providers.gpt import GPTProvider
+from app.llm.providers.claude import ClaudeProvider
+from app.llm.providers.qwen import QwenProvider
+from app.llm.providers.doubao import DoubaoProvider
+from app.llm.base import get_llm_provider
+from app.llm.agent import TestCaseAgent
 
 
-class TestMultiModelSwitching:
-    """多模型切换测试"""
+class TestGLMProvider:
+    """测试GLM Provider"""
 
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_switch_to_glm_model(self):
-        """测试切换到 GLM 模型"""
-        from app.llm.providers.glm import GLMProvider
-        
-        config = {
-            "model_name": "glm-4",
-            "api_key": "test_key",
-            "api_base_url": "https://open.bigmodel.cn/api/paas/v4"
-        }
-        
-        provider = GLMProvider(config)
-        
+    @patch('app.llm.providers.glm.init_chat_model')
+    def test_glm_provider_initialization(self, mock_init):
+        """测试GLM Provider初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = GLMProvider(
+            api_key="test_key",
+            model_name="glm-4",
+            temperature=0.7,
+            max_tokens=2048
+        )
+
+        # Verify init_chat_model was called with correct parameters
+        mock_init.assert_called_once()
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['model'] == "glm-4"
+        assert call_kwargs['model_provider'] == "zhipuai"
+        assert call_kwargs['zhipuai_api_key'] == "test_key"
+        assert call_kwargs['temperature'] == 0.7
+        assert call_kwargs['max_tokens'] == 2048
         assert provider.model_name == "glm-4"
 
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_switch_to_gpt_model(self):
-        """测试切换到 GPT 模型"""
-        from app.llm.providers.gpt import GPTProvider
-        
-        config = {
-            "model_name": "gpt-4",
-            "api_key": "test_key"
-        }
-        
-        provider = GPTProvider(config)
-        
-        assert provider.model_name == "gpt-4"
+    @patch('app.llm.providers.glm.init_chat_model')
+    def test_glm_provider_with_custom_base_url(self, mock_init):
+        """测试GLM Provider自定义base URL"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
 
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_switch_to_claude_model(self):
-        """测试切换到 Claude 模型"""
-        from app.llm.providers.claude import ClaudeProvider
-        
-        config = {
-            "model_name": "claude-sonnet-4-6",
-            "api_key": "test_key"
-        }
-        
-        provider = ClaudeProvider(config)
-        
-        assert provider.model_name == "claude-sonnet-4-6"
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_switch_to_qwen_model(self):
-        """测试切换到千问模型"""
-        from app.llm.providers.qwen import QwenProvider
-        
-        config = {
-            "model_name": "qwen-turbo",
-            "api_key": "test_key"
-        }
-        
-        provider = QwenProvider(config)
-        
-        assert provider.model_name == "qwen-turbo"
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_model_provider_factory(self):
-        """测试模型提供者工厂"""
-        from app.llm.base import ModelProviderFactory
-        
-        providers = ["zhipu", "openai", "anthropic", "alibaba"]
-        
-        for provider_type in providers:
-            provider = ModelProviderFactory.create(provider_type, {"api_key": "test"})
-            assert provider is not None
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_invalid_provider_type(self):
-        """测试无效的提供者类型"""
-        from app.llm.base import ModelProviderFactory
-        
-        with pytest.raises(ValueError, match="Unknown provider"):
-            ModelProviderFactory.create("invalid_provider", {"api_key": "test"})
-
-
-class TestParameterConfiguration:
-    """参数配置测试"""
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_temperature_config(self):
-        """测试温度参数配置"""
-        # 有效温度范围: 0-2
-        valid_temps = [0, 0.5, 1.0, 1.5, 2.0]
-        
-        for temp in valid_temps:
-            assert 0 <= temp <= 2
-        
-        invalid_temps = [-0.1, 2.1, 5]
-        
-        for temp in invalid_temps:
-            assert not (0 <= temp <= 2)
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_max_tokens_config(self):
-        """测试最大 token 数配置"""
-        valid_max_tokens = [512, 1024, 2048, 4096]
-        
-        for tokens in valid_max_tokens:
-            assert tokens > 0
-        
-        invalid_tokens = [0, -1]
-        
-        for tokens in invalid_tokens:
-            assert tokens <= 0
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_top_p_config(self):
-        """测试 top_p 参数配置"""
-        valid_top_p = [0.1, 0.5, 0.9, 1.0]
-        
-        for top_p in valid_top_p:
-            assert 0 < top_p <= 1
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_model_config_persistence(self):
-        """测试模型配置持久化"""
-        config_data = {
-            "provider": "zhipu",
-            "model_name": "glm-4",
-            "temperature": 0.7,
-            "max_tokens": 2048,
-            "is_active": True
-        }
-        
-        # 模拟保存配置
-        saved_config = config_data.copy()
-        
-        assert saved_config["is_active"] is True
-        assert saved_config["temperature"] == 0.7
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_default_config_values(self):
-        """测试默认配置值"""
-        defaults = {
-            "temperature": 0.7,
-            "max_tokens": 2048,
-            "top_p": 1.0,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0
-        }
-        
-        assert defaults["temperature"] == 0.7
-        assert defaults["max_tokens"] == 2048
-
-    @pytest.mark.unit
-    @pytest.mark.llm
-    def test_config_validation(self):
-        """测试配置验证"""
-        from app.schemas.model_config import ModelConfigUpdate
-        
-        valid_config = ModelConfigUpdate(
-            temperature=0.8,
-            max_tokens=4096
+        provider = GLMProvider(
+            api_key="test_key",
+            model_name="glm-4",
+            api_base_url="https://custom.api.com"
         )
-        
-        assert valid_config.temperature == 0.8
-        
-        # 无效配置
-        invalid_temps = [-1, 3]
-        
-        for temp in invalid_temps:
-            try:
-                ModelConfigUpdate(temperature=temp)
-            except Exception:
-                pass  # 预期会报错
+
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['zhipuai_api_base'] == "https://custom.api.com"
+
+
+class TestGPTProvider:
+    """测试GPT Provider"""
+
+    @patch('app.llm.providers.gpt.init_chat_model')
+    def test_gpt_provider_initialization(self, mock_init):
+        """测试GPT Provider初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = GPTProvider(
+            api_key="test_key",
+            model_name="gpt-4"
+        )
+
+        mock_init.assert_called_once()
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['model'] == "gpt-4"
+        assert call_kwargs['model_provider'] == "openai"
+        assert call_kwargs['api_key'] == "test_key"
+
+    @patch('app.llm.providers.gpt.init_chat_model')
+    def test_gpt_provider_with_custom_base_url(self, mock_init):
+        """测试GPT Provider自定义base URL"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = GPTProvider(
+            api_key="test_key",
+            api_base_url="https://custom.openai.com"
+        )
+
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['base_url'] == "https://custom.openai.com"
+
+
+class TestClaudeProvider:
+    """测试Claude Provider"""
+
+    @patch('app.llm.providers.claude.init_chat_model')
+    def test_claude_provider_initialization(self, mock_init):
+        """测试Claude Provider初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = ClaudeProvider(
+            api_key="test_key",
+            model_name="claude-sonnet-4-6"
+        )
+
+        mock_init.assert_called_once()
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['model'] == "claude-sonnet-4-6"
+        assert call_kwargs['model_provider'] == "anthropic"
+        assert call_kwargs['anthropic_api_key'] == "test_key"
+
+
+class TestQwenProvider:
+    """测试Qwen Provider"""
+
+    @patch('app.llm.providers.qwen.init_chat_model')
+    def test_qwen_provider_initialization(self, mock_init):
+        """测试Qwen Provider初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = QwenProvider(
+            api_key="test_key",
+            model_name="qwen-turbo"
+        )
+
+        mock_init.assert_called_once()
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['model'] == "qwen-turbo"
+        assert call_kwargs['model_provider'] == "openai"  # Qwen uses OpenAI-compatible API
+        assert call_kwargs['api_key'] == "test_key"
+        assert "dashscope.aliyuncs.com" in call_kwargs['base_url']
+
+    @patch('app.llm.providers.qwen.init_chat_model')
+    def test_qwen_provider_with_custom_base_url(self, mock_init):
+        """测试Qwen Provider自定义base URL"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = QwenProvider(
+            api_key="test_key",
+            api_base_url="https://custom.qwen.com"
+        )
+
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['base_url'] == "https://custom.qwen.com"
+
+
+class TestDoubaoProvider:
+    """测试Doubao Provider"""
+
+    @patch('app.llm.providers.doubao.init_chat_model')
+    def test_doubao_provider_initialization(self, mock_init):
+        """测试Doubao Provider初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        provider = DoubaoProvider(
+            api_key="test_key",
+            model_name="doubao-pro-32k"
+        )
+
+        mock_init.assert_called_once()
+        call_kwargs = mock_init.call_args.kwargs
+        assert call_kwargs['model'] == "doubao-pro-32k"
+        assert call_kwargs['model_provider'] == "openai"  # Doubao uses OpenAI-compatible API
+        assert call_kwargs['api_key'] == "test_key"
+        assert "volces.com" in call_kwargs['base_url']
+
+
+class TestGetLLMProvider:
+    """测试LLM Provider工厂函数"""
+
+    def test_get_glm_provider(self):
+        """测试获取GLM Provider"""
+        with patch('app.llm.providers.glm.init_chat_model') as mock_init:
+            mock_model = Mock()
+            mock_init.return_value = mock_model
+
+            provider = get_llm_provider(
+                provider="glm",
+                api_key="test_key",
+                model_name="glm-4"
+            )
+
+            assert isinstance(provider, GLMProvider)
+
+    def test_get_gpt_provider(self):
+        """测试获取GPT Provider"""
+        with patch('app.llm.providers.gpt.init_chat_model') as mock_init:
+            mock_model = Mock()
+            mock_init.return_value = mock_model
+
+            provider = get_llm_provider(
+                provider="gpt",
+                api_key="test_key",
+                model_name="gpt-4"
+            )
+
+            assert isinstance(provider, GPTProvider)
+
+    def test_get_claude_provider(self):
+        """测试获取Claude Provider"""
+        with patch('app.llm.providers.claude.init_chat_model') as mock_init:
+            mock_model = Mock()
+            mock_init.return_value = mock_model
+
+            provider = get_llm_provider(
+                provider="claude",
+                api_key="test_key",
+                model_name="claude-sonnet-4-6"
+            )
+
+            assert isinstance(provider, ClaudeProvider)
+
+    def test_get_qwen_provider(self):
+        """测试获取Qwen Provider"""
+        with patch('app.llm.providers.qwen.init_chat_model') as mock_init:
+            mock_model = Mock()
+            mock_init.return_value = mock_model
+
+            provider = get_llm_provider(
+                provider="qwen",
+                api_key="test_key",
+                model_name="qwen-turbo"
+            )
+
+            assert isinstance(provider, QwenProvider)
+
+    def test_get_doubao_provider(self):
+        """测试获取Doubao Provider"""
+        with patch('app.llm.providers.doubao.init_chat_model') as mock_init:
+            mock_model = Mock()
+            mock_init.return_value = mock_model
+
+            provider = get_llm_provider(
+                provider="doubao",
+                api_key="test_key",
+                model_name="doubao-pro-32k"
+            )
+
+            assert isinstance(provider, DoubaoProvider)
+
+    def test_invalid_provider(self):
+        """测试无效Provider"""
+        with pytest.raises(ValueError, match="Unknown provider"):
+            get_llm_provider(
+                provider="invalid",
+                api_key="test_key",
+                model_name="model"
+            )
+
+
+class TestTestCaseAgent:
+    """测试TestCaseAgent"""
+
+    @patch('app.llm.agent.init_chat_model')
+    def test_agent_initialization(self, mock_init):
+        """测试Agent初始化"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        agent = TestCaseAgent(
+            provider="glm",
+            api_key="test_key",
+            model_name="glm-4"
+        )
+
+        assert agent.provider == "glm"
+        assert agent.model_name == "glm-4"
+        assert agent.model_provider == "zhipuai"
+
+    @patch('app.llm.agent.init_chat_model')
+    @patch('app.llm.agent.create_agent')
+    def test_agent_create_agent(self, mock_create_agent, mock_init):
+        """测试Agent创建"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+        mock_agent_graph = Mock()
+        mock_create_agent.return_value = mock_agent_graph
+
+        agent = TestCaseAgent(
+            provider="glm",
+            api_key="test_key",
+            model_name="glm-4"
+        )
+
+        agent.create_agent("You are a test engineer")
+
+        # Verify agent was created
+        assert agent.agent is not None
+        mock_create_agent.assert_called_once()
+
+    @patch('app.llm.agent.init_chat_model')
+    def test_agent_provider_mapping(self, mock_init):
+        """测试Agent Provider映射"""
+        mock_model = Mock()
+        mock_init.return_value = mock_model
+
+        providers_map = {
+            "glm": "zhipuai",
+            "gpt": "openai",
+            "claude": "anthropic",
+            "qwen": "openai",
+            "doubao": "openai"
+        }
+
+        for provider, expected_model_provider in providers_map.items():
+            agent = TestCaseAgent(
+                provider=provider,
+                api_key="test_key",
+                model_name="model"
+            )
+            assert agent.model_provider == expected_model_provider
 
 
 class TestAPIKeyEncryption:
-    """API Key 加密存储测试"""
+    """测试 API Key 加密"""
 
-    @pytest.mark.unit
-    def test_encrypt_api_key(self):
-        """测试 API Key 加密"""
-        # 生成密钥
-        key = Fernet.generate_key()
-        fernet = Fernet(key)
-        
-        api_key = "sk-test-api-key-12345"
-        
-        # 加密
-        encrypted = fernet.encrypt(api_key.encode())
-        
-        assert encrypted != api_key.encode()
-        assert isinstance(encrypted, bytes)
-
-    @pytest.mark.unit
-    def test_decrypt_api_key(self):
-        """测试 API Key 解密"""
-        key = Fernet.generate_key()
-        fernet = Fernet(key)
-        
-        api_key = "sk-test-api-key-12345"
-        encrypted = fernet.encrypt(api_key.encode())
-        
-        # 解密
-        decrypted = fernet.decrypt(encrypted).decode()
-        
-        assert decrypted == api_key
-
-    @pytest.mark.unit
-    def test_encryption_with_password(self):
-        """测试使用密码加密"""
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
-        from cryptography.hazmat.primitives import hashes
+    @patch.dict('os.environ', {'SECRET_KEY': 'test-secret-key-for-encryption-32bytes!'})
+    def test_encryption_decryption(self):
+        """测试API Key加密解密"""
         import os
-        
-        password = "test_password"
-        salt = os.urandom(16)
-        
-        # 派生密钥
-        kdf = PBKDF2(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-        
-        fernet = Fernet(key)
-        
-        api_key = "secret-api-key"
-        encrypted = fernet.encrypt(api_key.encode())
-        decrypted = fernet.decrypt(encrypted).decode()
-        
+        os.environ['SECRET_KEY'] = 'test-secret-key-for-encryption-32bytes!'
+        from app.utils.security import encrypt_api_key, decrypt_api_key
+
+        api_key = "sk-test-key-12345"
+        encrypted = encrypt_api_key(api_key)
+        decrypted = decrypt_api_key(encrypted)
+
+        # Encrypted should be different from original
+        assert encrypted != api_key
+        # Decrypted should match original
         assert decrypted == api_key
 
-    @pytest.mark.unit
-    def test_encryption_key_rotation(self):
-        """测试密钥轮换"""
-        old_key = Fernet.generate_key()
-        new_key = Fernet.generate_key()
-        
-        old_fernet = Fernet(old_key)
-        new_fernet = Fernet(new_key)
-        
-        api_key = "my-secret-key"
-        
-        # 用旧密钥加密
-        encrypted = old_fernet.encrypt(api_key.encode())
-        
-        # 用新密钥解密会失败
-        with pytest.raises(Exception):
-            new_fernet.decrypt(encrypted)
+    @patch.dict('os.environ', {'SECRET_KEY': 'test-secret-key-for-encryption-32bytes!'})
+    def test_encryption_different_keys(self):
+        """测试不同API Key产生不同密文"""
+        import os
+        os.environ['SECRET_KEY'] = 'test-secret-key-for-encryption-32bytes!'
+        from app.utils.security import encrypt_api_key, decrypt_api_key
 
-    @pytest.mark.unit
-    def test_empty_api_key(self):
-        """测试空 API Key 处理"""
-        key = Fernet.generate_key()
-        fernet = Fernet(key)
-        
-        empty_key = ""
-        
-        # 空字符串加密
-        encrypted = fernet.encrypt(empty_key.encode())
-        decrypted = fernet.decrypt(encrypted).decode()
-        
-        assert decrypted == empty_key
+        key1 = "sk-test-key-11111"
+        key2 = "sk-test-key-22222"
 
-    @pytest.mark.unit
-    def test_api_key_not_stored_plaintext(self):
-        """测试 API Key 不以明文存储"""
-        api_key = "sk-live-api-key-12345"
-        
-        # 检查不应该明文存储
-        assert "sk-" in api_key  # 验证是 API key 格式
-        
-        # 加密后不应包含原始字符串
-        key = Fernet.generate_key()
-        fernet = Fernet(key)
-        encrypted = fernet.encrypt(api_key.encode())
-        
-        assert api_key.encode() not in encrypted
+        encrypted1 = encrypt_api_key(key1)
+        encrypted2 = encrypt_api_key(key2)
 
-    @pytest.mark.unit
-    def test_encrypted_key_in_database(self, mock_model_config):
-        """测试数据库中存储加密的 Key"""
-        # 模拟数据库存储
-        stored_key = mock_model_config.api_key_encrypted
-        
-        # 验证存储的是加密值
-        assert stored_key is not None
-        assert stored_key != "sk-original-key"
+        # Different keys should produce different encrypted values
+        assert encrypted1 != encrypted2
+
+        # But decryption should work correctly for each
+        assert decrypt_api_key(encrypted1) == key1
+        assert decrypt_api_key(encrypted2) == key2

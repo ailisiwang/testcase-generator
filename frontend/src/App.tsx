@@ -1,6 +1,9 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ConfigProvider, App as AntdApp } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
 import { useAuthStore } from './stores/authStore'
+import ErrorBoundary from './components/ErrorBoundary'
 import MainLayout from './components/Layout/MainLayout'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -35,8 +38,11 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <Routes>
+    <ErrorBoundary>
+      <ConfigProvider locale={zhCN}>
+        <AntdApp>
+          <BrowserRouter>
+            <Routes>
         {/* 公开路由 */}
         <Route
           path="/login"
@@ -78,6 +84,9 @@ const App: React.FC = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </AntdApp>
+  </ConfigProvider>
+</ErrorBoundary>
   )
 }
 

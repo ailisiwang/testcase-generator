@@ -1,323 +1,367 @@
-"""
-用例生成测试模块
-
-包含：
-- 文本输入生成测试
-- 文件上传处理测试
-- 流式输出验证测试
-- 异常处理测试
-"""
+"""测试用例生成服务"""
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch, mock_open
-from datetime import datetime
 import json
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from datetime import datetime
+
+from app.services.case_generator import CaseGeneratorService
+from app.models.test_case import TestCase, CaseField
+from app.models.model_config import ModelConfig
 
 
-class TestTextGeneration:
-    """文本输入生成测试"""
+class TestBuildGenerationPrompt:
+    """测试 Prompt 构建逻辑"""
 
-    @pytest.mark.unit
-    def test_generate_from_text(self):
-        """测试从文本生成用例"""
-        from app.services.case_generator import CaseGeneratorService
-        
-        requirement_text = """
-        用户登录功能：
-        1. 用户输入用户名和密码
-        2. 点击登录按钮
-        3. 验证登录成功
-        """
-        
-        # Mock LLM 返回
-        expected_cases = [
-            {
-                "title": "正常登录",
-                "precondition": "用户已注册",
-                "steps": ["打开登录页", "输入用户名密码", "点击登录"],
-                "expected": "登录成功"
-            }
+    def test_build_prompt_with_default_fields(self):
+        """测试使用默认字段构建 Prompt"""
+        requirement = "用户登录功能测试"
+        system_fields = []
+        count = 5
+
+        prompt = CaseGeneratorService._build_generation_prompt(
+            requirement, system_fields, count
+        )
+
+        # 当字段为空时，prompt 中不应该有字段信息
+        # 因为默认字段是在 generate_cases 中添加的
+        assert "用户登录功能测试" in prompt
+        assert "5条测试用例" in prompt
+        assert "JSON数组格式" in prompt
+        # 字段列表为空，所以不应该包含这些字段名
+        assert "用例标题" not in prompt
+        assert "前置条件" not in prompt
+
+    def test_build_prompt_with_custom_fields(self):
+        """测试使用自定义字段构建 Prompt"""
+        requirement = "支付功能测试"
+        system_fields = [
+            {"field_name": "title", "field_label": "用例名称", "field_type": "text", "is_required": True},
+            {"field_name": "priority", "field_label": "优先级", "field_type": "select", "is_required": False},
         ]
-        
-        # 验证输入
-        assert len(requirement_text) > 0
+        count = 10
 
-    @pytest.mark.unit
-    def test_generate_with_multiple_requirements(self):
-        """测试多需求生成"""
-        requirements = [
-            "用户注册功能",
-            "用户登录功能",
-            "密码找回功能"
+        prompt = CaseGeneratorService._build_generation_prompt(
+            requirement, system_fields, count
+        )
+
+        assert "支付功能测试" in prompt
+        assert "10条测试用例" in prompt
+        assert "用例名称" in prompt
+        assert "优先级" in prompt
+        assert "(必填)" in prompt
+
+    def test_build_prompt_with_required_field_marker(self):
+        """测试必填字段标记"""
+        system_fields = [
+            {"field_name": "title", "field_label": "标题", "field_type": "text", "is_required": True},
+            {"field_name": "desc", "field_label": "描述", "field_type": "textarea", "is_required": False},
         ]
-        
-        # 验证多需求处理
-        assert len(requirements) == 3
 
-    @pytest.mark.unit
-    def test_generate_with_empty_text(self):
-        """测试空文本输入"""
-        from app.services.case_generator import CaseGeneratorService
-        
-        with pytest.raises(ValueError, match="需求描述不能为空"):
-            # 模拟空文本检查
-            if not "需求内容":
-                raise ValueError("需求描述不能为空")
+        prompt = CaseGeneratorService._build_generation_prompt(
+            "测试", system_fields, 3
+        )
 
-    @pytest.mark.unit
-    def test_generate_with_invalid_format(self):
-        """测试无效格式处理"""
-        # 测试非标准字符
-        invalid_text = "\x00\x01\x02"
-        
-        # 应该进行清理或报错
-        assert isinstance(invalid_text, str)
+        assert "标题 (必填)" in prompt
+        assert "描述" in prompt
+        assert "(必填)" not in prompt.split("描述")[0]
 
-    @pytest.mark.unit
-    def test_generate_response_validation(self):
-        """测试生成响应验证"""
-        valid_response = {
-            "cases": [
-                {
-                    "title": "测试用例1",
-                    "precondition": "前置条件",
-                    "steps": ["步骤1", "步骤2"],
-                    "expected": "预期结果"
-                }
-            ]
-        }
-        
-        # 验证响应格式
-        assert "cases" in valid_response
-        assert len(valid_response["cases"]) > 0
+    def test_build_prompt_contains_format_requirements(self):
+        """测试 Prompt 包含格式要求"""
+        prompt = CaseGeneratorService._build_generation_prompt(
+            "测试需求", [], 5
+        )
+
+        assert "覆盖正常场景和异常场景" in prompt
+        assert "测试步骤清晰可执行" in prompt
+        assert "预期结果明确" in prompt
 
 
-class TestFileUpload:
-    """文件上传处理测试"""
+class TestParseCases:
+    """测试 JSON 解析逻辑"""
 
-    @pytest.mark.unit
-    def test_process_txt_file(self, sample_text_content):
-        """测试处理 TXT 文件"""
-        from app.services.file_processor import FileProcessor
-        
-        content = sample_text_content
-        
-        # 验证文本处理
-        assert isinstance(content, str)
-        assert len(content) > 0
+    def test_parse_valid_json_array(self):
+        """测试解析有效的 JSON 数组"""
+        response = """[{"title": "登录测试", "steps": ["输入密码"]}, {"title": "注册测试"}]"""
+        result = CaseGeneratorService._parse_cases(response)
 
-    @pytest.mark.unit
-    def test_process_pdf_file(self, sample_pdf_content):
-        """测试处理 PDF 文件"""
-        # Mock PDF 读取
-        pdf_content = sample_pdf_content
-        
-        # 验证 PDF 标识
-        assert pdf_content.startswith(b"%PDF")
+        assert len(result) == 2
+        assert result[0]["title"] == "登录测试"
+        assert result[1]["title"] == "注册测试"
 
-    @pytest.mark.unit
-    def test_process_docx_file(self):
-        """测试处理 DOCX 文件"""
-        # Mock DOCX 内容
-        docx_content = b"PK\x03\x04"  # DOCX 是 ZIP 格式
-        
-        assert docx_content.startswith(b"PK")
+    def test_parse_json_with_extra_text(self):
+        """测试解析包含额外文本的响应"""
+        response = """这是一些生成的文本：
+[{"title": "测试用例1", "steps": ["步骤1"]}]
+还有一些额外的文本"""
+        result = CaseGeneratorService._parse_cases(response)
 
-    @pytest.mark.unit
-    def test_file_size_limit(self):
-        """测试文件大小限制"""
-        max_size = 10 * 1024 * 1024  # 10MB
-        
-        # 模拟文件大小
-        small_file = 1024  # 1KB
-        large_file = 20 * 1024 * 1024  # 20MB
-        
-        assert small_file < max_size
-        assert large_file > max_size
+        assert len(result) == 1
+        assert result[0]["title"] == "测试用例1"
 
-    @pytest.mark.unit
-    def test_file_type_validation(self):
-        """测试文件类型验证"""
-        allowed_types = ['.txt', '.pdf', '.docx', '.md']
-        
-        valid_file = "test.txt"
-        invalid_file = "test.exe"
-        
-        ext = valid_file[valid_file.rfind('.'):]
-        assert ext in allowed_types
-        
-        ext2 = invalid_file[invalid_file.rfind('.'):]
-        assert ext2 not in allowed_types
+    def test_parse_json_no_array_found(self):
+        """测试没有找到 JSON 数组"""
+        response = "只是一些普通文本，没有 JSON"
+        result = CaseGeneratorService._parse_cases(response)
 
-    @pytest.mark.unit
-    def test_file_upload_empty(self):
-        """测试空文件上传"""
-        empty_content = b""
-        
-        # 应该报错或忽略
-        assert len(empty_content) == 0
+        assert result == []
 
-    @pytest.mark.unit
-    def test_file_upload_encoding(self):
-        """测试文件编码处理"""
-        # 测试不同编码
-        content_utf8 = "测试内容".encode('utf-8')
-        content_gbk = "测试内容".encode('gbk')
-        
-        assert content_utf8.decode('utf-8') == "测试内容"
-        assert content_gbk.decode('gbk') == "测试内容"
+    def test_parse_invalid_json(self):
+        """测试无效的 JSON"""
+        response = "[{invalid json}]"
+        result = CaseGeneratorService._parse_cases(response)
+
+        assert result == []
+
+    def test_parse_empty_response(self):
+        """测试空响应"""
+        result = CaseGeneratorService._parse_cases("")
+
+        assert result == []
+
+    def test_parse_nested_json(self):
+        """测试嵌套的 JSON 结构"""
+        response = """[{"title": "测试", "data": {"nested": "value", "count": 5}}]"""
+        result = CaseGeneratorService._parse_cases(response)
+
+        assert len(result) == 1
+        assert result[0]["data"]["nested"] == "value"
 
 
-class TestStreamingOutput:
-    """流式输出验证测试"""
+class TestGenerateCases:
+    """测试用例生成功能"""
 
-    @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_stream_response(self):
-        """测试流式响应"""
-        async def mock_stream():
-            chunks = ["第", "一", "条", "用", "例", "。"]
-            for chunk in chunks:
-                yield chunk
-        
-        result = []
-        async for chunk in mock_stream():
-            result.append(chunk)
-        
-        assert len(result) == 6
-        assert "".join(result) == "第一条用例。"
+    async def test_generate_cases_success(self, mock_db_session):
+        """测试成功生成用例"""
+        # Mock system
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
 
-    @pytest.mark.unit
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+
+        # Mock model config
+        mock_config = Mock()
+        mock_config.provider = "glm"
+        mock_config.model_name = "glm-4"
+        mock_config.api_key_encrypted = "encrypted_key"
+        mock_config.api_base_url = None
+        mock_config.temperature = 0.7
+
+        # Mock LLM response
+        mock_llm = AsyncMock()
+        mock_llm.generate_async.return_value = '[{"title": "登录测试", "steps": ["步骤1"]}]'
+
+        with patch('app.services.case_generator.decrypt_api_key', return_value='decrypted_key'):
+            with patch('app.services.case_generator.get_llm_provider', return_value=mock_llm):
+                result = await CaseGeneratorService.generate_cases(
+                    mock_db_session,
+                    system_id=1,
+                    requirement="登录功能测试",
+                    user_id=1
+                )
+
+        assert len(result) == 1
+        assert result[0]["title"] == "登录测试"
+
     @pytest.mark.asyncio
-    async def test_stream_empty_response(self):
-        """测试空流式响应"""
-        async def mock_empty_stream():
-            return
-            yield
-        
-        result = []
-        async for chunk in mock_empty_stream():
-            result.append(chunk)
-        
-        assert len(result) == 0
+    async def test_generate_cases_system_not_found(self, mock_db_session):
+        """测试系统不存在"""
+        mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
-    @pytest.mark.unit
+        with pytest.raises(ValueError) as exc_info:
+            await CaseGeneratorService.generate_cases(
+                mock_db_session,
+                system_id=999,
+                requirement="测试",
+                user_id=1
+            )
+
+        assert "System not found" in str(exc_info.value)
+
     @pytest.mark.asyncio
-    async def test_stream_with_error(self):
-        """测试流式错误处理"""
-        async def mock_error_stream():
-            yield "开始生成..."
-            raise Exception("LLM 调用失败")
-        
-        try:
-            result = []
-            async for chunk in mock_error_stream():
-                result.append(chunk)
-        except Exception as e:
-            assert "LLM 调用失败" in str(e)
+    async def test_generate_cases_no_model_config(self, mock_db_session):
+        """测试没有模型配置"""
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
 
-    @pytest.mark.unit
-    def test_stream_buffer_handling(self):
-        """测试流式缓冲区处理"""
-        # 模拟缓冲区
-        buffer_size = 1024
-        chunks = ["a"] * 100
-        
-        total = 0
-        for chunk in chunks:
-            total += len(chunk)
-        
-        assert total <= buffer_size * 10  # 小于10个缓冲区
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+        # 第二次查询返回 None（无模型配置）
+        mock_db_session.query.return_value.filter.return_value.first.side_effect = [mock_system, None]
 
-    @pytest.mark.unit
-    def test_stream_timeout(self):
-        """测试流式超时处理"""
-        import time
-        
-        timeout = 5
-        start = time.time()
-        
-        # 模拟长时间流式输出
-        # 实际应该检查是否超时
-        elapsed = time.time() - start
-        assert elapsed < timeout or elapsed >= timeout  # 总是True，只是示例
+        with pytest.raises(ValueError) as exc_info:
+            await CaseGeneratorService.generate_cases(
+                mock_db_session,
+                system_id=1,
+                requirement="测试",
+                user_id=1
+            )
+
+        assert "No active model configuration found" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_generate_cases_llm_error(self, mock_db_session):
+        """测试 LLM 调用失败"""
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
+
+        mock_config = Mock()
+        mock_config.provider = "glm"
+        mock_config.api_key_encrypted = "encrypted"
+        mock_config.api_base_url = None
+        mock_config.temperature = 0.7
+
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+        mock_db_session.query.return_value.filter.return_value.first.side_effect = [mock_system, mock_config]
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_async.side_effect = Exception("API Error")
+
+        with patch('app.services.case_generator.decrypt_api_key', return_value='key'):
+            with patch('app.services.case_generator.get_llm_provider', return_value=mock_llm):
+                with pytest.raises(ValueError) as exc_info:
+                    await CaseGeneratorService.generate_cases(
+                        mock_db_session,
+                        system_id=1,
+                        requirement="测试",
+                        user_id=1
+                    )
+
+        assert "Failed to generate cases" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_generate_cases_with_custom_count(self, mock_db_session):
+        """测试指定生成数量"""
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
+
+        mock_config = Mock()
+        mock_config.provider = "glm"
+        mock_config.api_key_encrypted = "encrypted"
+        mock_config.api_base_url = None
+        mock_config.temperature = 0.7
+
+        mock_llm = AsyncMock()
+        mock_llm.generate_async.return_value = '[{"title": "测试1"}, {"title": "测试2"}, {"title": "测试3"}]'
+
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+        mock_db_session.query.return_value.filter.return_value.first.side_effect = [mock_system, mock_config]
+
+        with patch('app.services.case_generator.decrypt_api_key', return_value='key'):
+            with patch('app.services.case_generator.get_llm_provider', return_value=mock_llm):
+                result = await CaseGeneratorService.generate_cases(
+                    mock_db_session,
+                    system_id=1,
+                    requirement="测试",
+                    count=3,
+                    user_id=1
+                )
+
+        assert len(result) == 3
 
 
-class TestExceptionHandling:
-    """异常处理测试"""
+class TestGenerateFromFile:
+    """测试从文件生成用例"""
 
-    @pytest.mark.unit
-    def test_llm_connection_error(self):
-        """测试 LLM 连接错误"""
-        with pytest.raises(Exception, match="Connection"):
-            raise Exception("Connection timeout")
+    @pytest.mark.asyncio
+    async def test_generate_from_file_success(self, mock_db_session):
+        """测试从文件成功生成用例"""
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
 
-    @pytest.mark.unit
-    def test_llm_rate_limit_error(self):
-        """测试 LLM 速率限制"""
-        with pytest.raises(Exception, match="rate limit|Rate limit"):
-            raise Exception("Rate limit exceeded")
+        mock_config = Mock()
+        mock_config.provider = "glm"
+        mock_config.api_key_encrypted = "encrypted"
+        mock_config.api_base_url = None
+        mock_config.temperature = 0.7
 
-    @pytest.mark.unit
-    def test_llm_invalid_api_key(self):
-        """测试无效 API Key"""
-        with pytest.raises(Exception, match="API key|api key"):
-            raise Exception("Invalid API key")
+        mock_llm = AsyncMock()
+        mock_llm.generate_async.return_value = '[{"title": "文件测试用例"}]'
 
-    @pytest.mark.unit
-    def test_llm_quota_exceeded(self):
-        """测试配额超出"""
-        with pytest.raises(Exception, match="quota|Quota"):
-            raise Exception("Quota exceeded")
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+        mock_db_session.query.return_value.filter.return_value.first.side_effect = [mock_system, mock_config]
 
-    @pytest.mark.unit
-    def test_llm_model_not_found(self):
-        """测试模型不存在"""
-        with pytest.raises(Exception, match="model|Model"):
-            raise Exception("Model not found")
+        with patch('app.services.case_generator.decrypt_api_key', return_value='key'):
+            with patch('app.services.case_generator.get_llm_provider', return_value=mock_llm):
+                result = await CaseGeneratorService.generate_from_file(
+                    mock_db_session,
+                    system_id=1,
+                    file_content="文件内容：需求描述",
+                    user_id=1
+                )
 
-    @pytest.mark.unit
-    def test_generation_timeout(self):
-        """测试生成超时"""
-        import time
-        
-        start = time.time()
-        
-        # 模拟超时
-        def long_task():
-            time.sleep(0.1)
-            return "done"
-        
-        with patch('time.sleep', return_value=None):
-            result = long_task()
-        
-        assert time.time() - start < 1  # 快速返回
+        assert len(result) == 1
+        assert result[0]["title"] == "文件测试用例"
 
-    @pytest.mark.unit
-    def test_invalid_response_format(self):
-        """测试无效响应格式"""
-        invalid_response = "not json"
-        
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(invalid_response)
+    @pytest.mark.asyncio
+    async def test_generate_from_file_system_not_found(self, mock_db_session):
+        """测试文件生成时系统不存在"""
+        mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
-    @pytest.mark.unit
-    def test_partial_stream_interruption(self):
-        """测试流中断处理"""
-        interrupted_data = "partial da"
-        
-        # 模拟中断的数据
-        try:
-            if len(interrupted_data) < 10:
-                raise ValueError("Incomplete data")
-        except ValueError as e:
-            assert "Incomplete" in str(e)
+        with pytest.raises(ValueError) as exc_info:
+            await CaseGeneratorService.generate_from_file(
+                mock_db_session,
+                system_id=999,
+                file_content="内容",
+                user_id=1
+            )
 
-    @pytest.mark.unit
-    def test_concurrent_generation_limit(self):
-        """测试并发生成限制"""
-        max_concurrent = 5
-        
-        # 模拟并发请求
-        active_requests = 6
-        
-        assert active_requests > max_concurrent  # 应该被限制
+        assert "System not found" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_generate_from_file_no_config(self, mock_db_session):
+        """测试文件生成时没有模型配置"""
+        mock_system = Mock()
+        mock_system.id = 1
+        mock_system.fields = []
+
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_system
+        mock_db_session.query.return_value.filter.return_value.first.side_effect = [mock_system, None]
+
+        with pytest.raises(ValueError) as exc_info:
+            await CaseGeneratorService.generate_from_file(
+                mock_db_session,
+                system_id=1,
+                file_content="内容",
+                user_id=1
+            )
+
+        assert "No active model configuration found" in str(exc_info.value)
+
+
+class TestEdgeCases:
+    """边界条件测试"""
+
+    def test_parse_cases_with_unicode(self):
+        """测试包含 Unicode 的解析"""
+        response = '[{"title": "测试用例中文", "steps": ["步骤一", "步骤二"]}]'
+        result = CaseGeneratorService._parse_cases(response)
+
+        assert result[0]["title"] == "测试用例中文"
+        assert result[0]["steps"][0] == "步骤一"
+
+    def test_parse_cases_empty_array(self):
+        """测试空数组解析"""
+        response = '[]'
+        result = CaseGeneratorService._parse_cases(response)
+
+        assert result == []
+
+    def test_parse_cases_large_array(self):
+        """测试大数组解析"""
+        cases = [{"title": f"测试用例{i}", "steps": ["步骤"]} for i in range(100)]
+        response = json.dumps(cases)
+        result = CaseGeneratorService._parse_cases(response)
+
+        assert len(result) == 100
+
+    def test_build_prompt_empty_requirement(self):
+        """测试空需求构建 Prompt"""
+        prompt = CaseGeneratorService._build_generation_prompt("", [], 5)
+
+        assert "测试用例" in prompt
+        assert "5条" in prompt

@@ -25,6 +25,47 @@ security = HTTPBearer()
 
 
 @router.get("", response_model=PaginatedTestCases)
+
+# Export route
+@router.get("/export")
+async def export_cases(
+    system_id: Optional[int] = None,
+    module_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dep)
+):
+    """Export cases to Excel"""
+    query = db.query(TestCase).join(TestSystem).filter(
+        TestSystem.user_id == current_user.id
+    )
+    
+    if system_id:
+        query = query.filter(TestCase.system_id == system_id)
+    if module_id:
+        query = query.filter(TestCase.module_id == module_id)
+    if status:
+        query = query.filter(TestCase.status == status)
+    
+    cases = query.all()
+    
+    # Get fields
+    if system_id:
+        fields = db.query(CaseField).filter(
+            CaseField.system_id == system_id
+        ).order_by(CaseField.sort_order).all()
+    else:
+        fields = []
+    
+    # Export to Excel
+    excel_data = export_cases_to_excel(cases, fields)
+    
+    return StreamingResponse(
+        iter([excel_data]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=test_cases.xlsx"}
+    )
+
 def get_cases(
     system_id: Optional[int] = None,
     module_id: Optional[int] = None,
@@ -217,10 +258,6 @@ def get_case_versions(
 
 
 # Generation routes
-@router.get("/export_cases")
-
-
-# Export route
 @router.post("/generate")
 async def generate_cases(
     request: CaseGenerateRequest,

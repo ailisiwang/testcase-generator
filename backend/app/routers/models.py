@@ -204,9 +204,10 @@ def test_model_config(
         "qwen": QwenProvider,
         "doubao": DoubaoProvider,
         "claude": ClaudeProvider,
+        "custom": GLMProvider,  # custom 也使用 GLM 作为默认
     }
     
-    ProviderClass = provider_map.get(config.provider)
+    ProviderClass = provider_map.get(config.provider) or GLMProvider
     if not ProviderClass:
         raise HTTPException(status_code=400, detail=f"不支持的供应商: {config.provider}")
     

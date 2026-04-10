@@ -11,6 +11,11 @@ const Login: React.FC = () => {
   const [activeTab, setActiveTab] = useState('login')
   const navigate = useNavigate()
   const { login: setAuthUser } = useAuthStore()
+  const cookieOptions = {
+    sameSite: 'strict' as const,
+    secure: window.location.protocol === 'https:',
+    path: '/',
+  }
 
   const onLogin = async (values: { username: string; password: string }) => {
     setLoading(true)
@@ -18,9 +23,9 @@ const Login: React.FC = () => {
       const res = await authApi.login(values)
       const { access_token, refresh_token, user } = res.data
       
-      Cookies.set('access_token', access_token)
+      Cookies.set('access_token', access_token, { ...cookieOptions, expires: 1 })
       if (refresh_token) {
-        Cookies.set('refresh_token', refresh_token)
+        Cookies.set('refresh_token', refresh_token, { ...cookieOptions, expires: 7 })
       }
       
       setAuthUser(user)

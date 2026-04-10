@@ -80,8 +80,11 @@ class CaseGeneratorService:
         
         # Get model config
         if model_config_id:
+            if user_id is None:
+                raise ValueError("User not specified")
             config = db.query(ModelConfig).filter(
                 ModelConfig.id == model_config_id,
+                ModelConfig.user_id == user_id,
                 ModelConfig.is_active == True
             ).first()
         else:
@@ -95,7 +98,10 @@ class CaseGeneratorService:
             raise ValueError("No active model configuration found")
         
         # Decrypt API key
-        api_key = decrypt_api_key(config.api_key_encrypted)
+        try:
+            api_key = decrypt_api_key(config.api_key_encrypted)
+        except ValueError:
+            raise ValueError("Failed to decrypt API key")
         
         # Get LLM provider
         llm = get_llm_provider(
@@ -175,7 +181,13 @@ class CaseGeneratorService:
         
         # Get model config
         if model_config_id:
-            config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
+            if user_id is None:
+                raise ValueError("User not specified")
+            config = db.query(ModelConfig).filter(
+                ModelConfig.id == model_config_id,
+                ModelConfig.user_id == user_id,
+                ModelConfig.is_active == True
+            ).first()
         else:
             config = db.query(ModelConfig).filter(
                 ModelConfig.user_id == user_id,
@@ -185,7 +197,10 @@ class CaseGeneratorService:
         if not config:
             raise ValueError("No active model configuration found")
         
-        api_key = decrypt_api_key(config.api_key_encrypted)
+        try:
+            api_key = decrypt_api_key(config.api_key_encrypted)
+        except ValueError:
+            raise ValueError("Failed to decrypt API key")
         
         llm = get_llm_provider(
             provider=config.provider,

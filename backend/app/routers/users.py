@@ -38,8 +38,7 @@ def get_users(
     current_user: User = Depends(get_current_user_dep)
 ):
     """Get user list (admin only in production)"""
-    users = db.query(User).offset(skip).limit(limit).all()
-    return users
+    return [current_user]
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -49,6 +48,8 @@ def get_user(
     current_user: User = Depends(get_current_user_dep)
 ):
     """Get user by ID"""
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
     user = db.query(User).filter(User.id == user_id).first()
     
     if not user:

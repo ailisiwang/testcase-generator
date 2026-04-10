@@ -26,7 +26,10 @@ import {
   HistoryOutlined,
   DownloadOutlined,
   MoreOutlined,
-  FilterOutlined
+  FilterOutlined,
+  CodeOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { caseApi, systemApi, moduleApi } from '../../api/services'
@@ -64,6 +67,10 @@ const Cases: React.FC = () => {
   const [versionDrawer, setVersionDrawer] = useState(false)
   const [versions, setVersions] = useState<any[]>([])
   const [filterVisible, setFilterVisible] = useState(false)
+  const [scriptModalVisible, setScriptModalVisible] = useState(false)
+  const [generatedScript, setGeneratedScript] = useState('')
+  const [generatingScript, setGeneratingScript] = useState(false)
+  const [scriptFramework, setScriptFramework] = useState('pytest')
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -220,6 +227,48 @@ const Cases: React.FC = () => {
     }
   }
 
+  const handleReview = async (record: TestCase, status: 'approved' | 'rejected') => {
+    try {
+      await caseApi.updateCase(record.id, { review_status: status })
+      message.success(status === 'approved' ? '已审核通过' : '已拒绝')
+      fetchCases()
+    } catch (error) {
+      message.error('更新审核状态失败')
+    }
+  }
+
+  const handleGenerateScript = async (record: TestCase) => {
+    setSelectedCase(record)
+    setGeneratedScript('')
+    setScriptModalVisible(true)
+    setGeneratingScript(true)
+    try {
+      const res = await caseApi.generateScript(record.id, { framework: scriptFramework })
+      setGeneratedScript(res.data.script)
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || '生成脚本失败')
+      setScriptModalVisible(false)
+    } finally {
+      setGeneratingScript(false)
+    }
+  }
+
+  const handleFrameworkChange = async (val: string) => {
+    setScriptFramework(val)
+    if (selectedCase) {
+      setGeneratingScript(true)
+      setGeneratedScript('')
+      try {
+        const res = await caseApi.generateScript(selectedCase.id, { framework: val })
+        setGeneratedScript(res.data.script)
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || '重新生成失败')
+      } finally {
+        setGeneratingScript(false)
+      }
+    }
+  }
+
   const columns = [
     {
       title: '用例标题',
@@ -303,6 +352,11 @@ const Cases: React.FC = () => {
           <Dropdown
             menu={{
               items: [
+                { key: 'script', icon: <CodeOutlined />, label: '生成自动化脚本', onClick: () => handleGenerateScript(record) },
+                { type: 'divider' },
+                { key: 'approve', icon: <CheckCircleOutlined style={{color: 'green'}} />, label: '审核通过', onClick: () => handleReview(record, 'approved'), disabled: record.review_status === 'approved' },
+                { key: 'reject', icon: <CloseCircleOutlined style={{color: 'red'}} />, label: '审核拒绝', onClick: () => handleReview(record, 'rejected'), disabled: record.review_status === 'rejected' },
+                { type: 'divider' },
                 { key: 'versions', icon: <HistoryOutlined />, label: '版本历史', onClick: () => handleViewVersions(record) },
                 { key: 'delete', icon: <DeleteOutlined />, label: '删除', danger: true, onClick: () => handleDelete(record.id) },
               ]
@@ -490,6 +544,79 @@ const Cases: React.FC = () => {
           </Card>
         ))}
       </Drawer>
+      {/* 生成脚本弹窗 */}
+      <Modal
+        title={`生成自动化脚本 - ${selectedCase?.case_data?.title || ''}`}
+        open={scriptModalVisible}
+        onCancel={() => {
+          setScriptModalVisible(false)
+          setSelectedCase(null)
+        }}
+        footer={null}
+        width={800}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Space>
+            <Text>目标框架:</Text>
+            <Select
+              value={scriptFramework}
+              onChange={handleFrameworkChange}
+              style={{ width: 150 }}
+              options={[
+                { label: 'Pytest (Python)', value: 'pytest' },
+                { label: 'Playwright (TS)', value: 'playwright-ts' },
+                { label: 'Playwright (Python)', value: 'playwright-python' },
+                { label: 'Cypress (JS/TS)', value: 'cypress' },
+                { label: 'Jest (JS)', value: 'jest' },
+              ]}
+              disabled={generatingScript}
+            />
+          </Space>
+        </div>
+        
+        <Card
+          size="small"
+          loading={generatingScript}
+          style={{
+            backgroundColor: '#1e1e1e',
+            borderColor: '#333',
+            height: '400px',
+            overflowY: 'auto'
+          }}
+        >
+          {!generatingScript && (
+            <pre style={{ margin: 0, color: '#d4d4d4', fontFamily: 'Menlo, Monaco, "Courier New", monospace', whiteSpace: 'pre-wrap' }}>
+              {generatedScript || '暂无脚本内容...'}
+            </pre>
+          )}
+        </Card>
+        
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <Space>
+            <Button
+              icon={<CodeOutlined />}
+              onClick={() => {
+                if (generatedScript) {
+                  navigator.clipboard.writeText(generatedScript)
+                  message.success('代码已复制到剪贴板')
+                }
+              }}
+              disabled={!generatedScript || generatingScript}
+            >
+              复制脚本
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                setScriptModalVisible(false)
+                setSelectedCase(null)
+              }}
+            >
+              关闭
+            </Button>
+          </Space>
+        </div>
+      </Modal>
     </div>
   )
 }

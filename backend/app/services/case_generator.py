@@ -217,6 +217,69 @@ class CaseGeneratorService:
 
 请以JSON数组格式返回测试用例，包含：用例标题、前置条件、测试步骤、预期结果等字段。
 直接返回JSON数组："""
-        
+
         result = await llm.generate_async(prompt)
         return CaseGeneratorService._parse_cases(result)
+
+    @staticmethod
+    async def generate_script(
+        db: Session,
+        case_id: int,
+        framework: str,
+        user_id: int
+    ) -> str:
+        """Generate automation script for a specific test case"""
+        # Get test case
+        case = db.query(TestCase).join(TestSystem).filter(
+            TestCase.id == case_id,
+            TestSystem.user_id == user_id
+        ).first()
+        
+        if not case:
+            raise ValueError("Test case not found")
+            
+        # Get default active config for user
+        config = db.query(ModelConfig).filter(
+            ModelConfig.user_id == user_id,
+            ModelConfig.is_active == True
+        ).first()
+
+        if not config:
+            raise ValueError("No active model configuration found")
+
+        try:
+            api_key = decrypt_api_key(config.api_key_encrypted)
+        except ValueError:
+            raise ValueError("Failed to decrypt API key")
+
+        llm = get_llm_provider(
+            provider=config.provider,
+            api_key=api_key,
+            model_name=config.model_name,
+            api_base_url=config.api_base_url,
+            temperature=config.temperature
+        )
+
+        prompt = f"""你是一个专业的自动化测试开发工程师。
+请根据以下测试用例数据，生成使用 {framework} 框架的自动化测试脚本。
+
+测试用例数据：
+{json.dumps(case.case_data, ensure_ascii=False, indent=2)}
+
+要求：
+1. 代码结构清晰，符合 {framework} 的最佳实践。
+2. 包含必要的注释、断言(Assertions)和等待机制。
+3. 请只返回代码内容，不要使用Markdown代码块包裹(不要使用```python等)，直接输出纯文本代码。"""
+
+        result = await llm.generate_async(prompt)
+        
+        # Clean markdown code block if model still outputs it
+        if result.startswith("```"):
+            lines = result.split("\n")
+            if len(lines) > 1 and lines[0].startswith("```"):
+                lines = lines[1:]
+            if len(lines) > 0 and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            result = "\n".join(lines)
+            
+        return result

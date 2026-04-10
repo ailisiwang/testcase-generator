@@ -91,6 +91,10 @@ class CaseExportRequest(BaseModel):
     format: str = "excel"
 
 
+class ScriptGenerateRequest(BaseModel):
+    framework: str = "pytest"  # e.g. pytest, playwright, cypress
+
+
 # Pagination
 class PaginatedTestCases(BaseModel):
     items: List[TestCaseResponse]

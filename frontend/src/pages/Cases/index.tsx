@@ -36,6 +36,7 @@ import { useSearchParams } from 'react-router-dom'
 import { caseApi, systemApi, moduleApi } from '../../api/services'
 import type { TestCase, System, Module, CaseData } from '../../types'
 import dayjs from 'dayjs'
+import ReactDiffViewer from 'react-diff-viewer-continued'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
@@ -66,7 +67,9 @@ const Cases: React.FC = () => {
   const [viewDrawer, setViewDrawer] = useState(false)
   const [selectedCase, setSelectedCase] = useState<TestCase | null>(null)
   const [versionDrawer, setVersionDrawer] = useState(false)
-  const [versions, setVersions] = useState<any[]>([])
+  const [versions, setVersions] = useState<VersionData[]>([])
+  const [compareDrawer, setCompareDrawer] = useState(false)
+  const [compareData, setCompareData] = useState<{oldData: string, newData: string, oldVersion: number, newVersion: number} | null>(null)
   const [filterVisible, setFilterVisible] = useState(false)
   const [scriptModalVisible, setScriptModalVisible] = useState(false)
   const [generatedScript, setGeneratedScript] = useState('')
@@ -213,6 +216,16 @@ const Cases: React.FC = () => {
     } catch (error) {
       message.error('获取版本历史失败')
     }
+  }
+
+  const handleCompareVersions = (oldVersion: VersionData, newVersion: VersionData) => {
+    setCompareData({
+      oldData: JSON.stringify(oldVersion.case_data, null, 2),
+      newData: JSON.stringify(newVersion.case_data, null, 2),
+      oldVersion: oldVersion.version,
+      newVersion: newVersion.version
+    })
+    setCompareDrawer(true)
   }
 
   const handleExport = async () => {
@@ -561,21 +574,86 @@ const Cases: React.FC = () => {
 
       {/* 版本历史抽屉 */}
       <Drawer
-        title={`版本历史 - ${selectedCase?.case_data?.title}`}
+        title={`版本历史 - ${selectedCase?.case_data?.title || ''}`}
         width={600}
         open={versionDrawer}
         onClose={() => setVersionDrawer(false)}
       >
-        {versions.map((v: VersionData) => (
+        {versions.map((v: VersionData, index: number) => (
           <Card key={v.id} size="small" style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Text strong>v{v.version}</Text>
-              <Text type="secondary">{dayjs(v.created_at).format('YYYY-MM-DD HH:mm')}</Text>
+              <Space>
+                <Text strong>v{v.version}</Text>
+                {index === 0 && <Tag color="blue">当前版本</Tag>}
+              </Space>
+              <Space>
+                <Text type="secondary">{dayjs(v.created_at).format('YYYY-MM-DD HH:mm')}</Text>
+                {index < versions.length - 1 && (
+                  <Button 
+                    type="link" 
+                    size="small" 
+                    onClick={() => handleCompareVersions(versions[index + 1], v)}
+                  >
+                    与上一版对比
+                  </Button>
+                )}
+              </Space>
             </div>
             <Divider style={{ margin: '8px 0' }} />
             <Text>{v.change_summary || '无变更说明'}</Text>
           </Card>
         ))}
+      </Drawer>
+
+      {/* 版本对比抽屉 */}
+      <Drawer
+        title={`版本对比 - ${selectedCase?.case_data?.title || ''}`}
+        width={900}
+        open={compareDrawer}
+        onClose={() => {
+          setCompareDrawer(false)
+          setCompareData(null)
+        }}
+      >
+        {compareData && (
+          <div style={{ padding: '0 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <Tag color="red">旧版本 (v{compareData.oldVersion})</Tag>
+              <Tag color="green">新版本 (v{compareData.newVersion})</Tag>
+            </div>
+            <div style={{ border: '1px solid #e8e8e8', borderRadius: 4, overflow: 'hidden' }}>
+              <ReactDiffViewer
+                oldValue={compareData.oldData}
+                newValue={compareData.newData}
+                splitView={true}
+                useDarkTheme={false}
+                leftTitle={`版本 ${compareData.oldVersion}`}
+                rightTitle={`版本 ${compareData.newVersion}`}
+                styles={{
+                  variables: {
+                    light: {
+                      diffViewerBackground: '#fff',
+                      diffViewerColor: '#333',
+                      addedBackground: '#e6ffed',
+                      addedColor: '#24292e',
+                      removedBackground: '#ffeef0',
+                      removedColor: '#24292e',
+                      wordAddedBackground: '#acf2bd',
+                      wordRemovedBackground: '#fdb8c0',
+                      addedGutterBackground: '#cdffd8',
+                      removedGutterBackground: '#ffdce0',
+                      gutterBackground: '#f7f7f7',
+                      gutterBackgroundDark: '#f3f1f1',
+                      highlightBackground: '#fffbdd',
+                      highlightGutterBackground: '#fff5b1',
+                      emptyLineBackground: '#fafbfc',
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
       </Drawer>
       {/* 生成脚本弹窗 */}
       <Modal

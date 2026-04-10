@@ -2,9 +2,10 @@
 import json
 import uuid
 import asyncio
-from typing import Dict, Any, Optional, List, AsyncGenerator
+from typing import Dict, Any, Optional, List, AsyncGenerator, Type
 from datetime import datetime
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field, create_model
 
 from app.models.test_case import TestCase, CaseVersion
 from app.models.model_config import ModelConfig
@@ -17,13 +18,40 @@ class CaseGeneratorService:
     """Test case generation service"""
     
     @staticmethod
+    def _create_schema(system_fields: List[Dict]) -> Type[BaseModel]:
+        """Create Pydantic schema dynamically based on system fields"""
+        model_fields = {}
+        for f in system_fields:
+            field_name = f["field_name"]
+            description = f.get("field_label", field_name)
+            # Type mapping
+            if f.get("field_type") in ["select", "radio"]:
+                field_type = str
+            elif f.get("field_type") in ["checkbox"]:
+                field_type = List[str]
+            else:
+                field_type = str
+                
+            if f.get("is_required"):
+                model_fields[field_name] = (field_type, Field(..., description=description))
+            else:
+                model_fields[field_name] = (Optional[field_type], Field(None, description=description))
+                
+        TestCaseModel = create_model('TestCaseModel', **model_fields)
+        
+        class TestCaseList(BaseModel):
+            cases: List[TestCaseModel] = Field(..., description="生成的测试用例列表")
+            
+        return TestCaseList
+
+    @staticmethod
     def _build_generation_prompt(requirement: str, system_fields: List[Dict], count: int) -> str:
         """Build prompt for case generation"""
         field_info = []
         for f in system_fields:
             required_mark = " (必填)" if f.get("is_required") else ""
             field_info.append(f"- {f['field_name']}: {f['field_label']}{required_mark}")
-        
+
         prompt = f"""请根据以下需求生成{count}条测试用例。
 
 需求描述：
@@ -32,14 +60,10 @@ class CaseGeneratorService:
 测试用例字段：
 {chr(10).join(field_info)}
 
-请以JSON数组格式返回，每条用例是一个完整的测试用例对象。
 要求：
 1. 覆盖正常场景和异常场景
 2. 测试步骤清晰可执行
-3. 预期结果明确
-4. 返回有效的JSON数组格式
-
-直接返回JSON数组，不要其他内容："""
+3. 预期结果明确"""
         return prompt
     
     @staticmethod
@@ -112,38 +136,18 @@ class CaseGeneratorService:
             temperature=config.temperature
         )
         
-        # Build prompt
+        # Build prompt and schema
         prompt = CaseGeneratorService._build_generation_prompt(requirement, system_fields, count)
-        
-        # Generate cases
+        schema = CaseGeneratorService._create_schema(system_fields)
+
+        # Generate cases using structured output
         try:
-            result = await llm.generate_async(prompt)
-            
-            # Parse JSON response
-            cases = CaseGeneratorService._parse_cases(result)
-            return cases
+            result = await llm.generate_structured_async(prompt, schema)
+            # Handle Pydantic V1/V2 dict compatibility
+            return [case.model_dump() if hasattr(case, 'model_dump') else case.dict() for case in result.cases]
         except Exception as e:
             raise ValueError(f"Failed to generate cases: {str(e)}")
-    
-    @staticmethod
-    def _parse_cases(response: str) -> List[Dict[str, Any]]:
-        """Parse LLM response to cases"""
-        # Try to extract JSON array
-        try:
-            # Find JSON array in response
-            start = response.find('[')
-            end = response.rfind(']') + 1
-            
-            if start != -1 and end != 0:
-                json_str = response[start:end]
-                cases = json.loads(json_str)
-                return cases
-        except json.JSONDecodeError:
-            pass
-        
-        # Return empty list if parsing fails
-        return []
-    
+
     @staticmethod
     async def generate_from_file(
         db: Session,
@@ -213,13 +217,15 @@ class CaseGeneratorService:
         prompt = f"""请根据以下需求文档生成{count}条测试用例。
 
 需求文档：
-{file_content}
+{file_content}"""
 
-请以JSON数组格式返回测试用例，包含：用例标题、前置条件、测试步骤、预期结果等字段。
-直接返回JSON数组："""
+        schema = CaseGeneratorService._create_schema(system_fields)
 
-        result = await llm.generate_async(prompt)
-        return CaseGeneratorService._parse_cases(result)
+        try:
+            result = await llm.generate_structured_async(prompt, schema)
+            return [case.model_dump() if hasattr(case, 'model_dump') else case.dict() for case in result.cases]
+        except Exception as e:
+            raise ValueError(f"Failed to generate cases from file: {str(e)}")
 
     @staticmethod
     async def generate_script(

@@ -1,7 +1,7 @@
 """Test case routes"""
 from typing import List, Optional
 import math
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from app.schemas.case import (
 from app.models.test_case import TestCase, CaseVersion, CaseField
 from app.models.system import TestSystem
 from app.models.user import User
+from app.models.model_config import OperationLog
 from app.routers.users import get_current_user_dep
 from app.services.case_generator import CaseGeneratorService
 from app.services.script_runner import ScriptRunnerService
@@ -67,6 +68,7 @@ def get_cases(
 # Export route
 @router.get("/export")
 async def export_cases(
+    request: Request,
     system_id: Optional[int] = None,
     module_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -105,6 +107,22 @@ async def export_cases(
         } for f in fields]
     )
 
+    # Log operation
+    log = OperationLog(
+        user_id=current_user.id,
+        action="export_cases",
+        resource_type="test_case",
+        details={
+            "system_id": system_id,
+            "module_id": module_id,
+            "status": status,
+            "count": len(cases)
+        },
+        ip_address=request.client.host if request.client else None
+    )
+    db.add(log)
+    db.commit()
+
     return StreamingResponse(
         iter([excel_data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -113,6 +131,7 @@ async def export_cases(
 
 @router.post("", response_model=TestCaseResponse, status_code=status.HTTP_201_CREATED)
 def create_case(
+    request: Request,
     case_data: TestCaseCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dep)
@@ -156,6 +175,17 @@ def create_case(
         created_by=current_user.id
     )
     db.add(version)
+
+    # Log operation
+    log = OperationLog(
+        user_id=current_user.id,
+        action="create_case",
+        resource_type="test_case",
+        resource_id=case.id,
+        details={"system_id": case.system_id, "module_id": case.module_id},
+        ip_address=request.client.host if request.client else None
+    )
+    db.add(log)
     db.commit()
 
     return case
@@ -180,6 +210,7 @@ def get_case(
 @router.put("/{case_id}", response_model=TestCaseResponse)
 def update_case(
     case_id: int,
+    request: Request,
     case_data: TestCaseUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dep)
@@ -214,6 +245,19 @@ def update_case(
     if case_data.review_status is not None:
         case.review_status = case_data.review_status
 
+    # Log operation
+    log = OperationLog(
+        user_id=current_user.id,
+        action="update_case",
+        resource_type="test_case",
+        resource_id=case.id,
+        details={
+            "updated_fields": [k for k, v in case_data.dict(exclude_unset=True).items()]
+        },
+        ip_address=request.client.host if request.client else None
+    )
+    db.add(log)
+
     db.commit()
     db.refresh(case)
 
@@ -222,6 +266,7 @@ def update_case(
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_case(
     case_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dep)
 ):
@@ -235,6 +280,18 @@ def delete_case(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用例不存在")
 
     db.delete(case)
+
+    # Log operation
+    log = OperationLog(
+        user_id=current_user.id,
+        action="delete_case",
+        resource_type="test_case",
+        resource_id=case_id,
+        details={"case_title": case.case_data.get("title", "") if isinstance(case.case_data, dict) else ""},
+        ip_address=request.client.host if request.client else None
+    )
+    db.add(log)
+
     db.commit()
 
     return None
@@ -311,14 +368,15 @@ async def execute_case_script(
 # Generation routes
 @router.post("/generate")
 async def generate_cases(
-    request: CaseGenerateRequest,
+    request: Request,
+    generate_request: CaseGenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dep)
 ):
     """Generate test cases using LLM"""
     # Verify system ownership
     system = db.query(TestSystem).filter(
-        TestSystem.id == request.system_id,
+        TestSystem.id == generate_request.system_id,
         TestSystem.user_id == current_user.id
     ).first()
 
@@ -328,12 +386,27 @@ async def generate_cases(
     try:
         cases = await CaseGeneratorService.generate_cases(
             db=db,
-            system_id=request.system_id,
-            requirement=request.requirement,
-            model_config_id=request.model_config_id,
-            count=request.count,
+            system_id=generate_request.system_id,
+            requirement=generate_request.requirement,
+            model_config_id=generate_request.model_config_id,
+            count=generate_request.count,
             user_id=current_user.id
         )
+
+        # Log operation
+        log = OperationLog(
+            user_id=current_user.id,
+            action="generate_cases",
+            resource_type="test_case",
+            details={
+                "system_id": generate_request.system_id,
+                "requirement_length": len(generate_request.requirement),
+                "count": len(cases)
+            },
+            ip_address=request.client.host if request.client else None
+        )
+        db.add(log)
+        db.commit()
 
         return {
             "cases": cases,

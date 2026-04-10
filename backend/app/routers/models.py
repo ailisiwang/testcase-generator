@@ -193,7 +193,10 @@ def test_model_config(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="配置不存在")
     
     # Decrypt API key
-    api_key = decrypt_api_key(config.api_key_encrypted) if config.api_key_encrypted else None
+    try:
+        api_key = decrypt_api_key(config.api_key_encrypted) if config.api_key_encrypted else None
+    except ValueError:
+        api_key = None
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key 未配置")
     

@@ -15,12 +15,16 @@ app = FastAPI(
 )
 
 # Configure CORS
+allow_credentials = settings.CORS_ALLOW_CREDENTIALS
+if "*" in settings.CORS_ORIGINS:
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Register routers

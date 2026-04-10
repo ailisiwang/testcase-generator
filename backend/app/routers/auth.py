@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.user import UserCreate, UserResponse, LoginRequest, Token, RefreshTokenRequest
 from app.services.auth import AuthService
+from app.utils.security import decode_token
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 security = HTTPBearer()
@@ -40,21 +41,24 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 @router.post("/refresh", response_model=Token)
 def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
     """Refresh access token"""
-    access_token = AuthService.refresh_access_token(request.refresh_token)
-    
-    if not access_token:
+    payload = decode_token(request.refresh_token)
+    if not payload or payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的刷新令牌",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Get user from token
-    payload = AuthService.refresh_access_token.__self__.decode_token(request.refresh_token)
-    user_id = int(payload.get("sub"))
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的刷新令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     # Create new token response
-    tokens = AuthService.create_tokens(user_id)
+    tokens = AuthService.create_tokens(int(user_id))
     return tokens
 
 

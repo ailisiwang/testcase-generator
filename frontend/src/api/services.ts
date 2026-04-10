@@ -111,28 +111,37 @@ export const caseApi = {
     api.post('/cases', data),
   
   // 更新用例
-  updateCase: (id: number, data: { 
-    module_id?: number; 
+  updateCase: (id: number, data: {
+    module_id?: number;
     case_data?: any;
     status?: string;
+    review_status?: string;
   }) =>
     api.put(`/cases/${id}`, data),
-  
+
   // 删除用例
   deleteCase: (id: number) =>
     api.delete(`/cases/${id}`),
-  
+
   // 获取版本历史
   getCaseVersions: (id: number) =>
     api.get(`/cases/${id}/versions`),
-  
+
   // 版本对比
   compareVersions: (id: number, v1: number, v2: number) =>
     api.get(`/cases/${id}/compare`, { params: { v1, v2 } }),
-  
+
   // 导出 Excel
   exportCases: (params: { system_id?: number; module_id?: number; status?: string }) =>
     api.get('/cases/export', { params, responseType: 'blob' }),
+
+  // 生成自动化测试脚本
+  generateScript: (caseId: number, data: { framework: string }) =>
+    api.post(`/cases/${caseId}/script`, data),
+
+  // 执行测试脚本
+  executeScript: (caseId: number, data: { script_content: string; framework: string }) =>
+    api.post(`/cases/${caseId}/execute`, data),
 }
 
 // 用例生成 API
@@ -155,6 +164,10 @@ export const generateApi = {
   // 流式输出
   getStream: (taskId: string) =>
     new EventSource(`/api/cases/generate/stream/${taskId}`),
+  
+  // 生成自动化测试脚本
+  generateScript: (caseId: number, data: { framework: string }) =>
+    api.post(`/cases/${caseId}/script`, data),
 }
 
 // 模型配置 API

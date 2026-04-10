@@ -3,6 +3,11 @@ import Cookies from 'js-cookie'
 import { message } from 'antd'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+const cookieOptions = {
+  sameSite: 'strict' as const,
+  secure: window.location.protocol === 'https:',
+  path: '/',
+}
 
 // 扩展 InternalAxiosRequestConfig 类型，添加 _retry 标记
 interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
@@ -82,8 +87,8 @@ api.interceptors.response.use(
     if (status === 401) {
       // 如果已经重试过，直接跳转登录
       if (originalRequest._retry) {
-        Cookies.remove('access_token')
-        Cookies.remove('refresh_token')
+        Cookies.remove('access_token', { path: '/' })
+        Cookies.remove('refresh_token', { path: '/' })
         // 清空认证状态
         window.location.href = '/login'
         return Promise.reject(error)
@@ -93,7 +98,7 @@ api.interceptors.response.use(
 
       if (!refreshToken) {
         // 没有刷新 token，直接跳转登录
-        Cookies.remove('access_token')
+        Cookies.remove('access_token', { path: '/' })
         window.location.href = '/login'
         return Promise.reject(error)
       }
@@ -126,7 +131,7 @@ api.interceptors.response.use(
         })
 
         const { access_token } = res.data
-        Cookies.set('access_token', access_token)
+        Cookies.set('access_token', access_token, { ...cookieOptions, expires: 1 })
 
         processQueue(null, access_token)
 
@@ -139,8 +144,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         // 刷新失败
         processQueue(refreshError as Error, null)
-        Cookies.remove('access_token')
-        Cookies.remove('refresh_token')
+        Cookies.remove('access_token', { path: '/' })
+        Cookies.remove('refresh_token', { path: '/' })
         message.error('登录已过期，请重新登录')
         window.location.href = '/login'
         return Promise.reject(refreshError)

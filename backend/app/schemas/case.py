@@ -94,6 +94,16 @@ class CaseExportRequest(BaseModel):
 class ScriptGenerateRequest(BaseModel):
     framework: str = "pytest"  # e.g. pytest, playwright, cypress
 
+class ScriptExecuteRequest(BaseModel):
+    script_content: str
+    framework: str = "pytest"
+
+class ScriptExecuteResponse(BaseModel):
+    success: bool
+    output: str
+    execution_time: float
+    error_message: Optional[str] = None
+
 
 # Pagination
 class PaginatedTestCases(BaseModel):

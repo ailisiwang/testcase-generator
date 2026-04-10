@@ -29,7 +29,8 @@ import {
   FilterOutlined,
   CodeOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  PlayCircleOutlined
 } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { caseApi, systemApi, moduleApi } from '../../api/services'
@@ -71,6 +72,13 @@ const Cases: React.FC = () => {
   const [generatedScript, setGeneratedScript] = useState('')
   const [generatingScript, setGeneratingScript] = useState(false)
   const [scriptFramework, setScriptFramework] = useState('pytest')
+  const [executingScript, setExecutingScript] = useState(false)
+  const [executionResult, setExecutionResult] = useState<{
+    success: boolean;
+    output: string;
+    execution_time: number;
+    error_message?: string;
+  } | null>(null)
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -240,6 +248,7 @@ const Cases: React.FC = () => {
   const handleGenerateScript = async (record: TestCase) => {
     setSelectedCase(record)
     setGeneratedScript('')
+    setExecutionResult(null)
     setScriptModalVisible(true)
     setGeneratingScript(true)
     try {
@@ -258,6 +267,7 @@ const Cases: React.FC = () => {
     if (selectedCase) {
       setGeneratingScript(true)
       setGeneratedScript('')
+      setExecutionResult(null)
       try {
         const res = await caseApi.generateScript(selectedCase.id, { framework: val })
         setGeneratedScript(res.data.script)
@@ -266,6 +276,29 @@ const Cases: React.FC = () => {
       } finally {
         setGeneratingScript(false)
       }
+    }
+  }
+
+  const handleExecuteScript = async () => {
+    if (!selectedCase || !generatedScript) return
+    
+    setExecutingScript(true)
+    setExecutionResult(null)
+    try {
+      const res = await caseApi.executeScript(selectedCase.id, {
+        script_content: generatedScript,
+        framework: scriptFramework
+      })
+      setExecutionResult(res.data)
+      if (res.data.success) {
+        message.success(`执行成功，耗时 ${res.data.execution_time}s`)
+      } else {
+        message.error('执行失败，请查看日志')
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || '执行过程发生异常')
+    } finally {
+      setExecutingScript(false)
     }
   }
 
@@ -546,16 +579,17 @@ const Cases: React.FC = () => {
       </Drawer>
       {/* 生成脚本弹窗 */}
       <Modal
-        title={`生成自动化脚本 - ${selectedCase?.case_data?.title || ''}`}
+        title={`自动化脚本 - ${selectedCase?.case_data?.title || ''}`}
         open={scriptModalVisible}
         onCancel={() => {
           setScriptModalVisible(false)
           setSelectedCase(null)
+          setExecutionResult(null)
         }}
         footer={null}
-        width={800}
+        width={900}
       >
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
           <Space>
             <Text>目标框架:</Text>
             <Select
@@ -569,27 +603,94 @@ const Cases: React.FC = () => {
                 { label: 'Cypress (JS/TS)', value: 'cypress' },
                 { label: 'Jest (JS)', value: 'jest' },
               ]}
-              disabled={generatingScript}
+              disabled={generatingScript || executingScript}
             />
+          </Space>
+          <Space>
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              onClick={handleExecuteScript}
+              loading={executingScript}
+              disabled={generatingScript || !generatedScript}
+              style={{ backgroundColor: '#52c41a' }}
+            >
+              运行脚本
+            </Button>
           </Space>
         </div>
         
-        <Card
-          size="small"
-          loading={generatingScript}
-          style={{
-            backgroundColor: '#1e1e1e',
-            borderColor: '#333',
-            height: '400px',
-            overflowY: 'auto'
-          }}
-        >
-          {!generatingScript && (
-            <pre style={{ margin: 0, color: '#d4d4d4', fontFamily: 'Menlo, Monaco, "Courier New", monospace', whiteSpace: 'pre-wrap' }}>
-              {generatedScript || '暂无脚本内容...'}
-            </pre>
+        <Row gutter={16}>
+          <Col span={executionResult ? 12 : 24} style={{ transition: 'all 0.3s' }}>
+            <Card
+              title={<span style={{ fontSize: 14 }}>代码编辑器</span>}
+              size="small"
+              loading={generatingScript}
+              style={{
+                backgroundColor: '#1e1e1e',
+                borderColor: '#333',
+                height: '450px',
+                overflowY: 'auto'
+              }}
+              headStyle={{ backgroundColor: '#2d2d2d', color: '#fff', borderBottom: '1px solid #333' }}
+            >
+              {!generatingScript && (
+                <TextArea
+                  value={generatedScript}
+                  onChange={(e) => setGeneratedScript(e.target.value)}
+                  style={{ 
+                    backgroundColor: 'transparent', 
+                    color: '#d4d4d4', 
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    border: 'none',
+                    resize: 'none',
+                    height: '380px',
+                    padding: 0,
+                    boxShadow: 'none'
+                  }}
+                />
+              )}
+            </Card>
+          </Col>
+          
+          {executionResult && (
+            <Col span={12}>
+              <Card
+                title={
+                  <Space>
+                    <span style={{ fontSize: 14 }}>执行终端</span>
+                    <Tag color={executionResult.success ? 'success' : 'error'}>
+                      {executionResult.success ? '成功' : '失败'}
+                    </Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{executionResult.execution_time}s</Text>
+                  </Space>
+                }
+                size="small"
+                style={{
+                  backgroundColor: '#0d0d0d',
+                  borderColor: '#333',
+                  height: '450px',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+                headStyle={{ backgroundColor: '#2d2d2d', color: '#fff', borderBottom: '1px solid #333' }}
+                bodyStyle={{ flex: 1, padding: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+              >
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+                  <pre style={{ 
+                    margin: 0, 
+                    color: executionResult.success ? '#d4d4d4' : '#ff7875', 
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace', 
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '13px'
+                  }}>
+                    {executionResult.output || 'No output'}
+                  </pre>
+                </div>
+              </Card>
+            </Col>
           )}
-        </Card>
+        </Row>
         
         <div style={{ marginTop: 16, textAlign: 'right' }}>
           <Space>
@@ -606,10 +707,10 @@ const Cases: React.FC = () => {
               复制脚本
             </Button>
             <Button
-              type="primary"
               onClick={() => {
                 setScriptModalVisible(false)
                 setSelectedCase(null)
+                setExecutionResult(null)
               }}
             >
               关闭

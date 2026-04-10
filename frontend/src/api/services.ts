@@ -138,6 +138,10 @@ export const caseApi = {
   // 生成自动化测试脚本
   generateScript: (caseId: number, data: { framework: string }) =>
     api.post(`/cases/${caseId}/script`, data),
+
+  // 执行测试脚本
+  executeScript: (caseId: number, data: { script_content: string; framework: string }) =>
+    api.post(`/cases/${caseId}/execute`, data),
 }
 
 // 用例生成 API

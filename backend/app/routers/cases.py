@@ -11,13 +11,14 @@ from app.database import get_db
 from app.schemas.case import (
     TestCaseCreate, TestCaseUpdate, TestCaseResponse,
     CaseGenerateRequest, CaseGenerateFileRequest,
-    PaginatedTestCases, ScriptGenerateRequest
+    PaginatedTestCases, ScriptGenerateRequest, ScriptExecuteRequest, ScriptExecuteResponse
 )
 from app.models.test_case import TestCase, CaseVersion, CaseField
 from app.models.system import TestSystem
 from app.models.user import User
 from app.routers.users import get_current_user_dep
 from app.services.case_generator import CaseGeneratorService
+from app.services.script_runner import ScriptRunnerService
 from app.utils.excel import export_cases_to_excel
 
 router = APIRouter(prefix="/api/cases", tags=["用例管理"])
@@ -279,6 +280,33 @@ async def generate_case_script(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("/{case_id}/execute", response_model=ScriptExecuteResponse)
+async def execute_case_script(
+    case_id: int,
+    request: ScriptExecuteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dep)
+):
+    """Execute generated automation script"""
+    try:
+        # We can perform additional security checks here if needed
+        # such as verifying case ownership
+        case = db.query(TestCase).join(TestSystem).filter(
+            TestCase.id == case_id,
+            TestSystem.user_id == current_user.id
+        ).first()
+
+        if not case:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用例不存在")
+
+        result = await ScriptRunnerService.execute_script(
+            script_content=request.script_content,
+            framework=request.framework
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"脚本执行失败: {str(e)}")
 
 # Generation routes
 @router.post("/generate")

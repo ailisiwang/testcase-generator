@@ -39,7 +39,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 def create_refresh_token(data: dict) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=7)
+    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -56,8 +56,8 @@ def decode_token(token: str) -> Optional[dict]:
 
 def _get_encryption_key() -> bytes:
     """Generate a proper Fernet encryption key from SECRET_KEY"""
-    # Hash the secret key to get a consistent 32-byte value
-    key_hash = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    key_source = settings.ENCRYPTION_KEY or settings.SECRET_KEY
+    key_hash = hashlib.sha256(key_source.encode()).digest()
     # Fernet requires a URL-safe base64-encoded 32-byte key
     return base64.urlsafe_b64encode(key_hash)
 
@@ -79,8 +79,12 @@ def encrypt_api_key(api_key: str) -> str:
 
 def decrypt_api_key(encrypted_key: str) -> str:
     """Decrypt API key"""
+    if encrypted_key == "":
+        return ""
+    if not encrypted_key.startswith("gAAAA"):
+        return encrypted_key
     try:
         f = create_fernet()
         return f.decrypt(encrypted_key.encode()).decode()
     except Exception:
-        return encrypted_key
+        raise ValueError("Failed to decrypt API key")

@@ -1,6 +1,10 @@
 """LLM base module - LangChain 1.x integration"""
-from typing import Optional, AsyncGenerator, Dict, Any
+from typing import Optional, AsyncGenerator, Dict, Any, TypeVar, Type
 from abc import ABC, abstractmethod
+from pydantic import BaseModel
+
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class BaseLLMProvider(ABC):
@@ -19,6 +23,11 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def stream(self, prompt: str, **kwargs) -> AsyncGenerator[str, None]:
         """Stream generate text from prompt"""
+        pass
+
+    @abstractmethod
+    async def generate_structured_async(self, prompt: str, schema: Type[T], **kwargs) -> T:
+        """Generate structured output asynchronously"""
         pass
 
 

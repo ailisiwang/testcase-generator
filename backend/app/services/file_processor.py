@@ -27,9 +27,10 @@ class FileProcessor:
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
-        file_hash = hashlib.md5(file_data).hexdigest()[:8]
-        ext = Path(filename).suffix.lower()
-        unique_filename = f"{file_hash}_{filename}"
+        safe_name = Path(filename).name
+        file_hash = hashlib.sha256(file_data).hexdigest()[:12]
+        ext = Path(safe_name).suffix.lower()
+        unique_filename = f"{file_hash}_{safe_name}"
         
         file_path = upload_dir / unique_filename
         
@@ -93,7 +94,7 @@ class FileProcessor:
     def validate_file(filename: str, file_size: int) -> bool:
         """Validate file type and size"""
         # Check extension
-        ext = Path(filename).suffix.lower()
+        ext = Path(Path(filename).name).suffix.lower()
         if ext not in settings.ALLOWED_EXTENSIONS:
             return False
         

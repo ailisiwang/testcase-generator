@@ -42,8 +42,17 @@ class GLMProvider(BaseLLMProvider):
         return response.content
 
     async def stream(self, prompt: str, **kwargs) -> AsyncGenerator[str, None]:
-        """Stream generate text"""
+        """Stream text generation asynchronously"""
         messages = [HumanMessage(content=prompt)]
+        
         async for chunk in self.model.astream(messages):
-            if chunk.content:
+            if hasattr(chunk, "content"):
                 yield chunk.content
+            else:
+                yield str(chunk)
+
+    async def generate_structured_async(self, prompt: str, schema: Type[T], **kwargs) -> T:
+        """Generate structured output asynchronously"""
+        messages = [HumanMessage(content=prompt)]
+        structured_llm = self.model.with_structured_output(schema)
+        return await structured_llm.ainvoke(messages)

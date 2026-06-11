@@ -22,8 +22,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   login: (user) => set({ user, isAuthenticated: true }),
   logout: () => {
-    Cookies.remove('access_token')
-    Cookies.remove('refresh_token')
+    Cookies.remove('access_token', { path: '/' })
+    Cookies.remove('refresh_token', { path: '/' })
     set({ user: null, isAuthenticated: false })
   },
 }))

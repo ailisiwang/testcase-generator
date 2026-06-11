@@ -1,13 +1,14 @@
 """Application configuration"""
 import os
-from typing import Optional
+from typing import Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "TestCase Generator"
-    DEBUG: bool = True
+    DEBUG: bool = False
     
     # Database
     DATABASE_URL: str = "postgresql://testcase:testcase@localhost:5432/testcase"
@@ -27,8 +28,18 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = "your-encryption-key-change-in-production"
     
     # CORS
-    CORS_ORIGINS: list = ["*"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ALLOW_CREDENTIALS: bool = True
     
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: Any):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
     class Config:
         env_file = ".env"
 

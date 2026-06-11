@@ -32,6 +32,30 @@ import type { System, Module, ModelConfig, CaseData } from '../../types'
 const { Title, Text } = Typography
 const { TextArea } = Input
 
+const sanitizeUrl = (url: string) => {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    const protocol = parsed.protocol.toLowerCase()
+    if (protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:') {
+      return parsed.toString()
+    }
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+const markdownComponents = {
+  a: (props: any) => {
+    const { href, ...rest } = props
+    return <a {...rest} href={href} target="_blank" rel="noreferrer noopener" />
+  },
+  img: (props: any) => {
+    const { src, ...rest } = props
+    return <img {...rest} src={src} loading="lazy" referrerPolicy="no-referrer" />
+  },
+}
+
 interface UploadFile {
   uid: string
   name: string
@@ -550,7 +574,12 @@ const CaseGenerate: React.FC = () => {
                   overflowY: 'auto',
                 }}
               >
-                <ReactMarkdown>{generatedContent}</ReactMarkdown>
+                <ReactMarkdown
+                  components={markdownComponents}
+                  urlTransform={(url) => sanitizeUrl(url)}
+                >
+                  {generatedContent}
+                </ReactMarkdown>
               </div>
             )}
           </Card>
